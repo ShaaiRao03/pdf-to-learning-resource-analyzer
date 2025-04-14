@@ -1,20 +1,26 @@
-import type { Metadata } from 'next'
-import './globals.css'
+import type React from "react"
+import { SidebarProvider } from "@/components/ui/sidebar"
+import { AppSidebar } from "@/components/app-sidebar"
+import "./globals.css"
 
-export const metadata: Metadata = {
-  title: 'Einstein AI',
-  description: 'PDF to Learning Resource Analyzer',
-  generator: 'Einstein AI',
+export const metadata = {
+  title: "PDF to Learning Resource Analyzer",
+  description: "Transform your PDFs into structured learning resources",
 }
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode
-}>) {
+}) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <SidebarProvider>
+          <AppSidebar />
+          {children}
+        </SidebarProvider>
+      </body>
     </html>
   )
 }
