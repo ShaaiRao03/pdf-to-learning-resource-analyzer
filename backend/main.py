@@ -238,22 +238,28 @@ async def search_resources(topics: List[Dict]) -> Dict:
         
         # Sort all resources by relevance score
         all_resources.sort(key=lambda x: x.get("score", 0), reverse=True)
-        
         # Take top 10 most relevant resources
         top_resources = all_resources[:10]
 
         print("top_resources: ",top_resources)
-        
-        # Group resources by type
-        return {
-            "articles": [r for r in top_resources if r.get("type") == "article"],
-            "videos": [r for r in top_resources if r.get("type") == "video"],
-            "courses": [
-                r for r in top_resources 
-                if isinstance(r.get("url"), str) and "course" in r["url"].lower()
-            ],
-            "topics": [t["name"] for t in topics]
-        }
+
+        # Improved classification logic
+        def classify_resource(r):
+            url = (r.get("url") or "").lower()
+            title = (r.get("title") or "").lower()
+            rtype = (r.get("type") or "").lower()
+            if rtype == "video" or "youtube" in url or "video" in url or "vimeo" in url:
+                return "videos"
+            if rtype == "course" or "course" in url or any(x in url for x in ["coursera", "udemy", "edx", "futurelearn"]):
+                return "courses"
+            # Default to article if not matched
+            return "articles"
+
+        grouped = {"articles": [], "videos": [], "courses": []}
+        for r in top_resources:
+            grouped[classify_resource(r)].append(r)
+        grouped["topics"] = [t["name"] for t in topics]
+        return grouped
                 
     except Exception as e:
         print(f"Tavily Error: {str(e)}")
