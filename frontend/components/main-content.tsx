@@ -16,6 +16,8 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
+import { auth } from "@/lib/firebase";
+import { v4 as uuidv4 } from 'uuid';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
@@ -37,6 +39,7 @@ export function MainContent() {
   const [extractedResources, setExtractedResources] = useState<ExtractedResource[]>([])
   const [selectedResources, setSelectedResources] = useState<string[]>([])
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [pdfUuid, setPdfUuid] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Helper: ensure resource is always an array
@@ -92,10 +95,23 @@ export function MainContent() {
     setShowResults(false);
     setExtractedResources([]);
     try {
+      const user = auth.currentUser;
+      if (!user) throw new Error("User not authenticated");
+      const idToken = await user.getIdToken();
+
+      // Generate a UUID for this upload
+      const newPdfUuid = uuidv4();
+      setPdfUuid(newPdfUuid); // Save UUID to state
+
       const formData = new FormData();
       formData.append("file", selectedFile);
+      formData.append("uuid", newPdfUuid);
+      
       const res = await fetch("http://localhost:8000/api/analyze-pdf", {
         method: "POST",
+        headers: {
+          "x-firebase-token": idToken,
+        },
         body: formData,
       });
       const data = await res.json();
@@ -202,8 +218,26 @@ export function MainContent() {
                     type="button"
                     aria-label="Remove PDF"
                     className="ml-1 p-1 rounded-full hover:bg-red-100 text-red-500 transition"
-                    onClick={(e) => {
+                    onClick={async (e) => {
                       e.stopPropagation();
+                      // Call backend to delete the PDF if a file is selected
+                      if (fileSelected && fileName) {
+                        try {
+                          const user = auth.currentUser;
+                          if (!user) throw new Error("User not authenticated");
+                          const idToken = await user.getIdToken();
+                          const res = await fetch("http://localhost:8000/api/delete_pdf", {
+                            method: "DELETE",
+                            headers: {
+                              "Content-Type": "application/json",
+                              "x-firebase-token": idToken,
+                            },
+                            body: JSON.stringify({ filename: fileName, uuid: pdfUuid }),
+                          });
+                        } catch (err) {
+                          alert(err);
+                        }
+                      }
                       setFileSelected(false);
                       setFileName("");
                       setSelectedFile(null);

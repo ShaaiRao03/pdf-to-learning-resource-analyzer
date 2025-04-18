@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, HTTPException
+from fastapi import FastAPI, UploadFile, HTTPException, Request, File, Header
 from fastapi.middleware.cors import CORSMiddleware
 from google.cloud import documentai_v1 as documentai
 from google.cloud import storage
@@ -14,9 +14,16 @@ import httpx
 from typing import List, Dict
 import asyncio
 import re
+import firebase_admin
+from firebase_admin import credentials, auth as admin_auth
 
 # Environment variables
 load_dotenv()
+
+# Initialize Firebase Admin only once
+if not firebase_admin._apps:
+    cred = credentials.Certificate(r"C:\Users\User\Desktop\pdf-to-learning-resource-analyzer\backend\credentials\einstein-ai-ae343-firebase-adminsdk-fbsvc-4c43d7c0fa.json")
+    firebase_admin.initialize_app(cred)
 
 # Initialize clients
 LOCATION = os.getenv('DOCUMENT_AI_LOCATION', 'us')
@@ -40,20 +47,39 @@ bucket = storage_client.bucket(BUCKET_NAME)
 app = FastAPI()
 
 # Configure CORS
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["http://localhost:3000"],
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*", "x-firebase-token"],  # <--- Ensure your custom header is allowed!
 )
 
 MAX_FILE_SIZE = 5 * 1024 * 1024
 
+# Helper to verify Firebase ID token and get UID
+async def get_uid_from_request(request: Request) -> str:
+    id_token = request.headers.get("x-firebase-token")
+
+    if not id_token:
+        raise HTTPException(status_code=401, detail="Missing ID token")
+    try:
+        decoded_token = admin_auth.verify_id_token(id_token)
+        return decoded_token["uid"]
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid ID token")
 
 # Upload to GCS
-async def upload_to_gcs(content: bytes, filename: str) -> str:    
-    blob_name = f"uploads/{uuid.uuid4()}-{filename}"
+async def upload_to_gcs(content: bytes, filename: str, uid: str, uuid: str) -> str:
+    blob_name = f"{uuid}/{filename}"
     blob = bucket.blob(blob_name)
     blob.upload_from_string(content, content_type="application/pdf")
     return f"gs://{BUCKET_NAME}/{blob_name}"
@@ -271,9 +297,37 @@ async def search_resources(topics: List[Dict]) -> Dict:
             "topics": ["Error searching resources"]
         }
 
+
+@app.delete("/api/delete_pdf")
+async def delete_pdf(request: Request):
+    data = await request.json()
+    uuid = data.get("uuid")
+    filename = data.get("filename")
+    print("filename: ",filename)
+    print("uuid: ",uuid)
+    if not filename:
+        raise HTTPException(status_code=400, detail="Missing filename")
+    if not uuid:
+        raise HTTPException(status_code=400, detail="Missing UUID")
+    blob_name_upload = f"{uuid}/{filename}"
+    blob_upload = bucket.blob(blob_name_upload)
+    if blob_upload.exists():
+        blob_upload.delete()
+        return {"status": "deleted"}
+    else:
+        raise HTTPException(status_code=404, detail="File not found in uploads/{uid}/")
+
+
 @app.post("/api/analyze-pdf")
-async def analyze_pdf(file: UploadFile):
+async def analyze_pdf(request: Request, file: UploadFile):
     try:
+        # Get UUID from request
+        form = await request.form()
+        uuid = form.get("uuid")
+
+        if not uuid:
+            raise HTTPException(status_code=400, detail="Missing UUID")
+
         # Verify file type
         if not file.content_type == "application/pdf":
             return {
@@ -289,12 +343,13 @@ async def analyze_pdf(file: UploadFile):
         if len(content) > MAX_FILE_SIZE:
             return {
                 "success": False,
-                "message": "File size must be less than 20MB",
+                "message": "File size must be less than 5MB",
                 "error": "Please upload a smaller file"
             }
         
         # Upload to GCS
-        gcs_uri = await upload_to_gcs(content, file.filename)
+        uid = await get_uid_from_request(request)
+        gcs_uri = await upload_to_gcs(content, file.filename, uid, uuid)
         print(f"Uploaded file to: {gcs_uri}")
         
         # Process with Document AI batch
@@ -346,7 +401,7 @@ async def analyze_pdf(file: UploadFile):
         }
         
     except Exception as e:
-        print(f"Error in analyze_pdf: {str(e)}")
+        print(f"Error in analyze_pdf: {repr(e)}")
         return {
             "success": False,
             "message": "Error processing PDF",

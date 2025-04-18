@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
+import { auth } from "@/lib/firebase";
 
 // Sample data for saved PDFs and their resources
 const initialPdfs = [
@@ -136,15 +137,7 @@ export function SavedResourcesPage() {
     }
   }
 
-  // Delete an entire PDF and its resources
-  const deletePdf = () => {
-    if (deleteConfirm) {
-      setSavedPdfs((pdfs) => pdfs.filter((pdf) => pdf.id !== deleteConfirm.pdfId))
-      setDeleteConfirm(null)
-      setDeleteDialogOpen(false)
-      setDialogOpen(false)
-    }
-  }
+  
 
   // Filter and sort resources by filterText and confidence
   const getFilteredResources = () => {
@@ -411,7 +404,7 @@ export function SavedResourcesPage() {
             >
               Cancel
             </Button>
-            <Button variant="destructive" onClick={deletePdf}>
+            <Button variant="destructive">
               Delete
             </Button>
           </DialogFooter>
