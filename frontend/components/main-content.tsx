@@ -17,37 +17,16 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 
-// Mock data
-const sampleExtractedResources = [
-  {
-    id: "r1",
-    title: "Introduction to Machine Learning",
-    type: "article",
-    url: "https://example.com/intro-ml",
-    confidence: 0.92,
-  },
-  {
-    id: "r2",
-    title: "Neural Networks Explained",
-    type: "video",
-    url: "https://example.com/neural-networks",
-    confidence: 0.85,
-  },
-  {
-    id: "r3",
-    title: "Supervised vs Unsupervised Learning",
-    type: "article",
-    url: "https://example.com/learning-types",
-    confidence: 0.78,
-  },
-  {
-    id: "r4",
-    title: "Python Code for Decision Trees",
-    type: "code",
-    url: "https://example.com/decision-trees",
-    confidence: 0.88,
-  },
-]
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
+
+// Resource type for extracted resources
+interface ExtractedResource {
+  id: string;
+  title: string;
+  type: string;
+  url: string;
+  confidence: number;
+}
 
 export function MainContent() {
   const router = useRouter()
@@ -55,43 +34,114 @@ export function MainContent() {
   const [fileName, setFileName] = useState("")
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [showResults, setShowResults] = useState(false)
-  const [extractedResources, setExtractedResources] = useState([])
-  const [selectedResources, setSelectedResources] = useState([])
+  const [extractedResources, setExtractedResources] = useState<ExtractedResource[]>([])
+  const [selectedResources, setSelectedResources] = useState<string[]>([])
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+
+  // Helper: ensure resource is always an array
+  function ensureArray(val: any) {
+    if (Array.isArray(val)) return val;
+    if (val === undefined || val === null) return [];
+    return [val];
+  }
 
   // Handle file selection
   const handleFileSelect = (e) => {
-    const file = e.target.files?.[0]
-    if (file && file.type === "application/pdf") {
-      setFileSelected(true)
-      setFileName(file.name)
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.type !== "application/pdf") {
+      alert("Only PDF files are allowed.");
+      return;
     }
-  }
+    if (file.size > MAX_FILE_SIZE) {
+      alert("File size must be less than 5MB.");
+      return;
+    }
+    setFileSelected(true);
+    setFileName(file.name);
+    setSelectedFile(file);
+  };
 
   // Handle drag and drop
   const handleDrop = (e) => {
-    e.preventDefault()
-    const file = e.dataTransfer.files?.[0]
-    if (file && file.type === "application/pdf") {
-      setFileSelected(true)
-      setFileName(file.name)
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    if (file.type !== "application/pdf") {
+      alert("Only PDF files are allowed.");
+      return;
     }
+    if (file.size > MAX_FILE_SIZE) {
+      alert("File size must be less than 5MB.");
+      return;
+    }
+    setFileSelected(true);
+    setFileName(file.name);
+    setSelectedFile(file);
   }
 
   const handleDragOver = (e) => {
     e.preventDefault()
   }
 
-  // Analyze PDF
-  const analyzePDF = () => {
-    setIsAnalyzing(true)
-
-    // Simulate API call with timeout
-    setTimeout(() => {
-      setIsAnalyzing(false)
-      setExtractedResources(sampleExtractedResources)
-      setShowResults(true)
-    }, 2000)
-  }
+  // Analyze PDF (calls backend)
+  const analyzePDF = async () => {
+    if (!selectedFile) return;
+    setIsAnalyzing(true);
+    setShowResults(false);
+    setExtractedResources([]);
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      const res = await fetch("http://localhost:8000/api/analyze-pdf", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      console.log("API response:", data);
+      setIsAnalyzing(false);
+      if (!data.success) {
+        alert(data.message || "Failed to analyze PDF");
+        return;
+      }
+      
+      // Handle missing or unexpected structure
+      const resources = [];
+      const resourceMap = data.analysis && data.analysis.resources ? data.analysis.resources : {};
+      for (const art of ensureArray(resourceMap.articles)) {
+        resources.push({
+          id: art.id || art.url || art.title,
+          title: art.title,
+          type: "article",
+          url: art.url,
+          confidence: typeof art.confidence === "number" ? art.confidence : (typeof art.score === "number" ? art.score : 1.0),
+        });
+      }
+      for (const vid of ensureArray(resourceMap.videos)) {
+        resources.push({
+          id: vid.id || vid.url || vid.title,
+          title: vid.title,
+          type: "video",
+          url: vid.url,
+          confidence: typeof vid.confidence === "number" ? vid.confidence : (typeof vid.score === "number" ? vid.score : 1.0),
+        });
+      }
+      for (const course of ensureArray(resourceMap.courses)) {
+        resources.push({
+          id: course.id || course.url || course.title,
+          title: course.title,
+          type: "course",
+          url: course.url,
+          confidence: typeof course.confidence === "number" ? course.confidence : (typeof course.score === "number" ? course.score : 1.0),
+        });
+      }
+      setExtractedResources(resources);
+      setShowResults(true);
+    } catch (err) {
+      setIsAnalyzing(false);
+      alert("Error analyzing PDF");
+    }
+  };
 
   // Toggle resource selection
   const toggleResourceSelection = (resourceId) => {
@@ -111,6 +161,7 @@ export function MainContent() {
     setFileSelected(false)
     setFileName("")
     setSelectedResources([])
+    setSelectedFile(null)
 
     alert("Resources saved successfully!")
   }
