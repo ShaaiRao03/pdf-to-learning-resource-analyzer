@@ -1,7 +1,7 @@
 "use client"
 
-import { Home, BookMarked, User } from "lucide-react"
-import { usePathname } from "next/navigation"
+import { Home, BookMarked, User, LogOut } from "lucide-react"
+import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   Sidebar,
@@ -12,9 +12,12 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar"
+import { signOut } from "firebase/auth"
+import { auth } from "@/lib/firebase"
 
 export function AppSidebar() {
   const pathname = usePathname()
+  const router = useRouter();
 
   // Navigation items for the sidebar
   const navItems = [
@@ -38,6 +41,14 @@ export function AppSidebar() {
     },
   ]
 
+  const handleLogout = async () => {
+    // Show a confirmation dialog
+    if (window.confirm("Are you sure you want to log out?")) {
+      await signOut(auth);
+      router.replace("/login");
+    }
+  };
+
   return (
     <Sidebar>
       <SidebarHeader className="h-16 flex items-center px-4 border-b border-sidebar-border">
@@ -55,6 +66,12 @@ export function AppSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
           ))}
+          <SidebarMenuItem className="mt-auto">
+            <SidebarMenuButton onClick={handleLogout} className="flex items-center gap-2 text-red-600 hover:bg-red-50">
+              <LogOut className="h-4 w-4" />
+              <span>Log out</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
         </SidebarMenu>
       </SidebarContent>
       <SidebarRail />
