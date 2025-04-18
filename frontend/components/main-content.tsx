@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
@@ -37,6 +37,7 @@ export function MainContent() {
   const [extractedResources, setExtractedResources] = useState<ExtractedResource[]>([])
   const [selectedResources, setSelectedResources] = useState<string[]>([])
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Helper: ensure resource is always an array
   function ensureArray(val: any) {
@@ -135,6 +136,8 @@ export function MainContent() {
           confidence: typeof course.confidence === "number" ? course.confidence : (typeof course.score === "number" ? course.score : 1.0),
         });
       }
+      // Sort resources from high to low confidence
+      resources.sort((a, b) => b.confidence - a.confidence);
       setExtractedResources(resources);
       setShowResults(true);
     } catch (err) {
@@ -185,32 +188,65 @@ export function MainContent() {
             >
               <input
                 id="pdf-upload"
+                ref={fileInputRef}
                 type="file"
                 accept="application/pdf"
                 className="hidden"
                 onChange={handleFileSelect}
               />
               <p className="text-sm text-muted-foreground">Drag and drop your PDF here, or click to browse</p>
-              {fileSelected && <p className="mt-2 text-sm font-medium">{fileName} selected</p>}
+              {fileSelected && (
+                <div className="mt-2 flex items-center gap-2 justify-center">
+                  <span className="text-sm font-medium">{fileName}</span>
+                  <button
+                    type="button"
+                    aria-label="Remove PDF"
+                    className="ml-1 p-1 rounded-full hover:bg-red-100 text-red-500 transition"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFileSelected(false);
+                      setFileName("");
+                      setSelectedFile(null);
+                      setExtractedResources([]);
+                      setSelectedResources([]);
+                      if (fileInputRef.current) fileInputRef.current.value = "";
+                    }}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              )}
             </div>
 
-            <Button size="lg" className="px-8" disabled={!fileSelected || isAnalyzing} onClick={analyzePDF}>
-              {isAnalyzing ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Processing your request...
-                </>
-              ) : (
-                "Analyze PDF"
-              )}
-            </Button>
+            <div className="flex gap-4 mt-4">
+              <Button size="lg" className="px-8" disabled={!fileSelected || isAnalyzing} onClick={analyzePDF}>
+                {isAnalyzing ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Processing your request...
+                  </>
+                ) : (
+                  "Analyze PDF"
+                )}
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                disabled={extractedResources.length === 0 || !fileSelected}
+                onClick={() => setShowResults(true)}
+              >
+                View Resources
+              </Button>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Results Dialog */}
       <Dialog open={showResults} onOpenChange={setShowResults}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Extracted Resources</DialogTitle>
             <DialogDescription>
@@ -226,7 +262,8 @@ export function MainContent() {
                 </div>
               </div>
 
-              <div className="space-y-2">
+              {/* Scrollable resource list if more than 5 */}
+              <div className={`space-y-2${extractedResources.length > 5 ? ' max-h-80 overflow-y-auto pr-2' : ''}`}>
                 {extractedResources.map((resource) => (
                   <div key={resource.id} className="flex items-start gap-3 p-3 border rounded-md">
                     <Checkbox
@@ -236,7 +273,16 @@ export function MainContent() {
                     />
                     <div className="flex-1 min-w-0">
                       <Label htmlFor={`resource-${resource.id}`} className="font-medium cursor-pointer">
-                        {resource.title}
+                        <a
+                          href={resource.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline inline-flex items-center gap-1"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {resource.title}
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 ml-1 text-blue-500"><path d="M12.293 2.293a1 1 0 0 1 1.414 0l4 4a1 1 0 0 1 0 1.414l-8 8a1 1 0 0 1-1.414 0l-4-4a1 1 0 0 1 0-1.414l8-8zM13 5.414L6.414 12 8 13.586 14.586 7 13 5.414z" /></svg>
+                        </a>
                       </Label>
                       <div className="flex items-center gap-2 mt-1">
                         <Badge variant="outline" className="capitalize">
@@ -246,15 +292,6 @@ export function MainContent() {
                           Confidence: {Math.round(resource.confidence * 100)}%
                         </span>
                       </div>
-                      <a
-                        href={resource.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-primary hover:underline truncate block mt-1"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {resource.url}
-                      </a>
                     </div>
                   </div>
                 ))}

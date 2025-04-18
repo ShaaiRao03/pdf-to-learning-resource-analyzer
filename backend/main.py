@@ -231,15 +231,16 @@ async def search_resources(topics: List[Dict]) -> Dict:
                     
                 results = response.json().get("results", [])
                 
-                # Add topic context to each result
                 for result in results:
                     result["topic"] = topic_name
                     all_resources.append(result)
         
+        # Only keep resources with score > 0.6 (60%)
+        filtered_resources = [r for r in all_resources if r.get("score", 0) > 0.6]
         # Sort all resources by relevance score
-        all_resources.sort(key=lambda x: x.get("score", 0), reverse=True)
+        filtered_resources.sort(key=lambda x: x.get("score", 0), reverse=True)
         # Take top 10 most relevant resources
-        top_resources = all_resources[:10]
+        top_resources = filtered_resources[:10]
 
         print("top_resources: ",top_resources)
 
