@@ -14,7 +14,8 @@ export default function Home() {
     }
   }, [user, loading, router]);
 
-  if (loading || !user) return null;
+  if (loading) return null; // Don't render sidebar or content until auth is loaded
+  if (!user) return null; // Don't render content for unauthenticated
 
   return <MainContent />;
 }

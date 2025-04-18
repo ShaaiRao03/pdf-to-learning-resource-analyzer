@@ -15,7 +15,8 @@ export default function SavedResources() {
     }
   }, [user, loading, router]);
 
-  if (loading || !user) return null;
+  if (loading) return null;
+  if (!user) return null;
 
   return (
     <SidebarInset>
