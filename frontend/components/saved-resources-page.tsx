@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Trash2, FileText, X, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -17,76 +17,10 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { auth } from "@/lib/firebase";
-
-// Sample data for saved PDFs and their resources
-const initialPdfs = [
-  {
-    id: "1",
-    title: "Machine Learning Fundamentals",
-    date: "April 10, 2024",
-    resources: [
-      {
-        id: "r1",
-        title: "Introduction to Neural Networks",
-        type: "article",
-        url: "https://example.com/neural-networks",
-        confidence: 0.8,
-      },
-      {
-        id: "r2",
-        title: "Supervised Learning Tutorial",
-        type: "video",
-        url: "https://example.com/supervised-learning",
-        confidence: 0.9,
-      },
-    ],
-  },
-  {
-    id: "2",
-    title: "Web Development Guide",
-    date: "April 8, 2024",
-    resources: [
-      {
-        id: "r3",
-        title: "React Hooks Documentation",
-        type: "article",
-        url: "https://example.com/react-hooks",
-        confidence: 0.7,
-      },
-      {
-        id: "r4",
-        title: "CSS Grid Layout Tutorial",
-        type: "video",
-        url: "https://example.com/css-grid",
-        confidence: 0.6,
-      },
-    ],
-  },
-  {
-    id: "3",
-    title: "Data Structures and Algorithms",
-    date: "April 5, 2024",
-    resources: [
-      {
-        id: "r5",
-        title: "Binary Trees Implementation",
-        type: "code",
-        url: "https://example.com/binary-trees",
-        confidence: 0.5,
-      },
-      {
-        id: "r6",
-        title: "Dynamic Programming Examples",
-        type: "article",
-        url: "https://example.com/dynamic-programming",
-        confidence: 0.4,
-      },
-    ],
-  },
-]
+import { getFirestore, collection, doc, getDocs } from "firebase/firestore"
 
 export function SavedResourcesPage() {
-  const [savedPdfs, setSavedPdfs] = useState(initialPdfs)
+  const [savedPdfs, setSavedPdfs] = useState([])
   const [selectedPdf, setSelectedPdf] = useState(null)
   const [selectedResources, setSelectedResources] = useState([])
   const [deleteConfirm, setDeleteConfirm] = useState(null)
@@ -97,6 +31,27 @@ export function SavedResourcesPage() {
   const [editingTitleId, setEditingTitleId] = useState(null)
   const [editingTitleValue, setEditingTitleValue] = useState("")
   const titleInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+      const db = getFirestore();
+      const pdfsCol = collection(db, "users", user.uid, "pdfs");
+      const pdfsSnap = await getDocs(pdfsCol);
+      const pdfs = [];
+      for (const pdfDoc of pdfsSnap.docs) {
+        const pdfData = pdfDoc.data();
+        // Fetch resources subcollection
+        const resourcesCol = collection(db, "users", user.uid, "pdfs", pdfDoc.id, "resources");
+        const resourcesSnap = await getDocs(resourcesCol);
+        const resources = resourcesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        pdfs.push({ id: pdfDoc.id, ...pdfData, resources });
+      }
+      setSavedPdfs(pdfs);
+    };
+    fetchData();
+  }, []);
 
   // Open the resources modal for a PDF
   const handleOpenResources = (pdf) => {
@@ -136,8 +91,6 @@ export function SavedResourcesPage() {
       setSelectedResources([]);
     }
   }
-
-  
 
   // Filter and sort resources by filterText and confidence
   const getFilteredResources = () => {
