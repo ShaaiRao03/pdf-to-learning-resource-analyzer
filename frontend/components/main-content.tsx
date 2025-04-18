@@ -18,6 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { auth } from "@/lib/firebase";
 import { v4 as uuidv4 } from 'uuid';
+import { getFirestore, doc, setDoc, collection } from "firebase/firestore";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
@@ -40,6 +41,7 @@ export function MainContent() {
   const [selectedResources, setSelectedResources] = useState<string[]>([])
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [pdfUuid, setPdfUuid] = useState<string | null>(null);
+  const [savingResources, setSavingResources] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Helper: ensure resource is always an array
@@ -170,19 +172,42 @@ export function MainContent() {
   }
 
   // Save selected resources
-  const saveSelectedResources = () => {
-   
-    console.log("Saving resources:", selectedResources)
+  const saveSelectedResources = async () => {
+    setSavingResources(true);
+    try {
+      const user = auth.currentUser;
+      if (!user) throw new Error("User not authenticated");
+      const uid = user.uid;
+      if (!pdfUuid) throw new Error("No PDF UUID found");
+      if (!fileName) throw new Error("No PDF title found");
+      if (selectedResources.length === 0) throw new Error("No resources selected");
 
-    setShowResults(false)
+      const db = getFirestore();
+      // Create the PDF document with title
+      const pdfDocRef = doc(db, "users", uid, "pdfs", pdfUuid);
+      await setDoc(pdfDocRef, {
+        title: fileName
+      });
 
-    // Reset states
-    setFileSelected(false)
-    setFileName("")
-    setSelectedResources([])
-    setSelectedFile(null)
+      // Add each selected resource to the resources subcollection
+      const resourcesCollectionRef = collection(db, "users", uid, "pdfs", pdfUuid, "resources");
+      for (const resource of extractedResources.filter((r) => selectedResources.includes(r.id))) {
+        const resourceDocRef = doc(resourcesCollectionRef);
+        await setDoc(resourceDocRef, resource);
+      }
 
-    alert("Resources saved successfully!")
+      setShowResults(false); // Hide results window/modal after save
+      setFileSelected(false);
+      setFileName("");
+      setSelectedResources([]);
+      setSelectedFile(null);
+
+      alert("Resources saved successfully!");
+    } catch (err) {
+      alert("Failed to save resources: " + (err.message || err));
+    } finally {
+      setSavingResources(false);
+    }
   }
 
   return (
@@ -338,8 +363,8 @@ export function MainContent() {
             <Button variant="outline" onClick={() => setShowResults(false)}>
               Cancel
             </Button>
-            <Button onClick={saveSelectedResources} disabled={selectedResources.length === 0}>
-              Save Selected Resources
+            <Button size="lg" disabled={selectedResources.length === 0 || savingResources} onClick={saveSelectedResources}>
+              {savingResources ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving...</>) : "Save Resources"}
             </Button>
           </DialogFooter>
         </DialogContent>
