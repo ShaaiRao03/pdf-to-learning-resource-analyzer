@@ -79,20 +79,21 @@ const initialPdfs = [
 
 export function SavedResourcesPage() {
   const [savedPdfs, setSavedPdfs] = useState(initialPdfs)
-  const [selectedPdf, setSelectedPdf] = useState<any>(null)
-  const [selectedResources, setSelectedResources] = useState<string[]>([])
-  const [deleteConfirm, setDeleteConfirm] = useState<{ pdfId: string } | null>(null)
+  const [selectedPdf, setSelectedPdf] = useState(null)
+  const [selectedResources, setSelectedResources] = useState([])
+  const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
   // Open the resources modal for a PDF
-  const handleOpenResources = (pdf: any) => {
+  const handleOpenResources = (pdf) => {
     setSelectedPdf(pdf)
     setSelectedResources([])
     setDialogOpen(true)
   }
 
   // Toggle resource selection
-  const toggleResourceSelection = (resourceId: string) => {
+  const toggleResourceSelection = (resourceId) => {
     setSelectedResources((prev) =>
       prev.includes(resourceId) ? prev.filter((id) => id !== resourceId) : [...prev, resourceId],
     )
@@ -116,7 +117,7 @@ export function SavedResourcesPage() {
       // Update the selected PDF object to reflect changes
       setSelectedPdf((prev) => ({
         ...prev,
-        resources: prev.resources.filter((resource: any) => !selectedResources.includes(resource.id)),
+        resources: prev.resources.filter((resource) => !selectedResources.includes(resource.id)),
       }))
     }
   }
@@ -126,6 +127,7 @@ export function SavedResourcesPage() {
     if (deleteConfirm) {
       setSavedPdfs((pdfs) => pdfs.filter((pdf) => pdf.id !== deleteConfirm.pdfId))
       setDeleteConfirm(null)
+      setDeleteDialogOpen(false)
       setDialogOpen(false)
     }
   }
@@ -140,22 +142,33 @@ export function SavedResourcesPage() {
         {savedPdfs.map((pdf) => (
           <Card
             key={pdf.id}
-            className="cursor-pointer hover:shadow-md transition-shadow"
+            className="overflow-hidden hover:shadow-md transition-shadow"
             onClick={() => handleOpenResources(pdf)}
           >
             <CardHeader className="pb-3">
-              <div className="flex justify-between items-start">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <FileText className="h-5 w-5 text-muted-foreground" />
-                    {pdf.title}
-                  </CardTitle>
-                  <CardDescription>Added on {pdf.date}</CardDescription>
-                </div>
-              </div>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-muted-foreground" />
+                {pdf.title}
+              </CardTitle>
+              <CardDescription>Added on {pdf.date}</CardDescription>
             </CardHeader>
             <CardContent className="pb-4">
-              <div className="text-sm text-muted-foreground">{pdf.resources.length} learning resources available</div>
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-muted-foreground">
+                  {pdf.resources.length} learning resource{pdf.resources.length !== 1 ? "s" : ""}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-primary hover:text-primary hover:bg-primary/10"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleOpenResources(pdf)
+                  }}
+                >
+                  View Resources
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ))}
@@ -184,7 +197,7 @@ export function SavedResourcesPage() {
                 </div>
 
                 <div className="space-y-2">
-                  {selectedPdf?.resources.map((resource: any) => (
+                  {selectedPdf?.resources.map((resource) => (
                     <div key={resource.id} className="flex items-start gap-3 p-3 border rounded-md">
                       <Checkbox
                         id={`resource-${resource.id}`}
@@ -220,7 +233,13 @@ export function SavedResourcesPage() {
           </div>
 
           <DialogFooter className="flex justify-between sm:justify-between">
-            <Button variant="destructive" onClick={() => setDeleteConfirm({ pdfId: selectedPdf?.id })}>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setDeleteConfirm({ pdfId: selectedPdf?.id })
+                setDeleteDialogOpen(true)
+              }}
+            >
               <Trash2 className="h-4 w-4 mr-2" />
               Delete PDF
             </Button>
@@ -232,7 +251,7 @@ export function SavedResourcesPage() {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete PDF</DialogTitle>
@@ -241,7 +260,13 @@ export function SavedResourcesPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteConfirm(null)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteConfirm(null)
+                setDeleteDialogOpen(false)
+              }}
+            >
               Cancel
             </Button>
             <Button variant="destructive" onClick={deletePdf}>

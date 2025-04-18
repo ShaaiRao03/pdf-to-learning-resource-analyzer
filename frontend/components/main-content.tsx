@@ -281,7 +281,8 @@ export function MainContent() {
                           onClick={(e) => e.stopPropagation()}
                         >
                           {resource.title}
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 ml-1 text-blue-500"><path d="M12.293 2.293a1 1 0 0 1 1.414 0l4 4a1 1 0 0 1 0 1.414l-8 8a1 1 0 0 1-1.414 0l-4-4a1 1 0 0 1 0-1.414l8-8zM13 5.414L6.414 12 8 13.586 14.586 7 13 5.414z" /></svg>
+                          {/* Arrow up-right icon for external link */}
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 ml-1 text-blue-500"><path strokeLinecap="round" strokeLinejoin="round" d="M17 7l-10 10M17 7H7m10 0v10" /></svg>
                         </a>
                       </Label>
                       <div className="flex items-center gap-2 mt-1">
