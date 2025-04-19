@@ -103,12 +103,13 @@ export function SavedResourcesPage() {
     }
   };
 
-  // Helper to delete PDF in both Firestore and Cloud Storage
-  const deletePdfCompletely = async (pdfId, storagePath) => {
+  // Helper to delete PDF in both Firestore, Cloud Storage, and backend API
+  const deletePdfCompletely = async (pdfId, storagePath, fileName) => {
     setIsDeletingPdf(true);
     try {
       const user = auth.currentUser;
       if (!user) throw new Error("User not authenticated");
+      const idToken = await user.getIdToken();
       const db = getFirestore();
       // Delete all resources under this PDF
       const resourcesCol = collection(db, "users", user.uid, "pdfs", pdfId, "resources");
@@ -123,6 +124,20 @@ export function SavedResourcesPage() {
         const storage = getStorage();
         const fileRef = storageRef(storage, storagePath);
         await deleteObject(fileRef);
+      }
+      // Call backend API to delete PDF (send uuid and filename as JSON in DELETE body, include firebase token)
+      try {
+        await fetch("http://localhost:8000/api/delete-pdf", {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            "x-firebase-token": idToken,
+          },
+          body: JSON.stringify({ uuid: pdfId, filename: fileName }),
+        });
+      } catch (apiErr) {
+        // Optionally log or notify API error, but do not block UI
+        console.error("Backend API PDF delete failed", apiErr);
       }
       setSavedPdfs((pdfs) => pdfs.filter((pdf) => pdf.id !== pdfId));
       setSelectedPdf(null);
@@ -145,7 +160,7 @@ export function SavedResourcesPage() {
     if (sel === total && total > 0) {
       setIsDeletingPdf(true);
       try {
-        await deletePdfCompletely(selectedPdf.id, selectedPdf.storagePath || selectedPdf.filePath || null);
+        await deletePdfCompletely(selectedPdf.id, selectedPdf.storagePath || selectedPdf.filePath || null, selectedPdf.title || selectedPdf.fileName || "");
       } finally {
         setIsDeletingPdf(false);
         setRemoveSelectedDialogOpen(false);
@@ -184,6 +199,11 @@ export function SavedResourcesPage() {
   const handleSelectAllResources = () => {
     if (!selectedPdf) return;
     setSelectedResources(selectedPdf.resources.map(r => r.id));
+  };
+
+  // Deselect all resources button handler
+  const handleDeselectAllResources = () => {
+    setSelectedResources([]);
   };
 
   // Filter and sort resources by filterText and confidence
@@ -303,22 +323,26 @@ export function SavedResourcesPage() {
             <DialogTitle>{selectedPdf?.title}</DialogTitle>
             <DialogDescription>Resources extracted from this PDF</DialogDescription>
           </DialogHeader>
-          {/* Filter input */}
-          <div className="mb-2">
+          {/* Filtering and Select All/Deselect All controls side by side */}
+          <div className="flex items-center gap-2 mb-2">
             <Input
-              placeholder="Filter resources by title or type..."
+              type="text"
+              placeholder="Filter resources..."
               value={filterText}
               onChange={(e) => setFilterText(e.target.value)}
               className="max-w-xs"
             />
+            {selectedPdf && selectedPdf.resources && selectedPdf.resources.length > 0 && (
+              <>
+                <Button size="sm" variant="secondary" onClick={handleSelectAllResources}>
+                  Select All
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleDeselectAllResources}>
+                  Deselect All
+                </Button>
+              </>
+            )}
           </div>
-          {selectedPdf && selectedPdf.resources && selectedPdf.resources.length > 0 && (
-            <div className="flex justify-end mb-2">
-              <Button size="sm" variant="secondary" onClick={handleSelectAllResources}>
-                Select All Resources
-              </Button>
-            </div>
-          )}
           <div className="py-4">
             {getFilteredResources().length > 0 ? (
               <div
@@ -396,6 +420,7 @@ export function SavedResourcesPage() {
                 variant="destructive"
                 onClick={() => {
                   setPendingDeletePdfId(selectedPdf?.id); 
+                  setPendingDeletePdfStoragePath(selectedPdf?.storagePath || selectedPdf?.filePath || null);
                   setFinalDeleteDialogOpen(true);
                 }}
               >
@@ -468,7 +493,7 @@ export function SavedResourcesPage() {
             >
               Cancel
             </Button>
-            <Button variant="destructive" onClick={() => { setPendingDeletePdfId(deleteConfirm.pdfId); setFinalDeleteDialogOpen(true); setDeleteDialogOpen(false); }}>
+            <Button variant="destructive" onClick={() => { setPendingDeletePdfId(deleteConfirm.pdfId); setPendingDeletePdfStoragePath(deleteConfirm.storagePath); setFinalDeleteDialogOpen(true); setDeleteDialogOpen(false); }}>
               Delete
             </Button>
           </DialogFooter>
@@ -489,7 +514,7 @@ export function SavedResourcesPage() {
               Cancel
             </Button>
             <Button variant="destructive" onClick={() => {
-              handleDeletePdf(pendingDeletePdfId);
+              deletePdfCompletely(pendingDeletePdfId, pendingDeletePdfStoragePath, selectedPdf?.title || selectedPdf?.fileName || "");
             }} disabled={isDeletingPdf}>
               {isDeletingPdf ? (<><Loader2 className="animate-spin h-4 w-4 mr-2 inline" /> Deleting...</>) : "Yes, delete PDF"}
             </Button>
@@ -510,7 +535,7 @@ export function SavedResourcesPage() {
             <Button variant="outline" onClick={() => setShowDeleteLastResourceDialog(false)} disabled={isDeletingPdf}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={() => deletePdfCompletely(pendingDeletePdfId, pendingDeletePdfStoragePath)} disabled={isDeletingPdf}>
+            <Button variant="destructive" onClick={() => deletePdfCompletely(pendingDeletePdfId, pendingDeletePdfStoragePath, selectedPdf?.title || selectedPdf?.fileName || "")} disabled={isDeletingPdf}>
               {isDeletingPdf ? (<><Loader2 className="animate-spin h-4 w-4 mr-2 inline" /> Deleting PDF...</>) : "Yes, delete PDF"}
             </Button>
           </DialogFooter>

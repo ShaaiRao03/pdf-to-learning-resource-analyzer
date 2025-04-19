@@ -16,6 +16,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"; // Import Input component
 import { auth } from "@/lib/firebase";
 import { v4 as uuidv4 } from 'uuid';
 import { getFirestore, doc, setDoc, collection } from "firebase/firestore";
@@ -44,6 +45,7 @@ export function MainContent() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [pdfUuid, setPdfUuid] = useState<string | null>(null);
   const [savingResources, setSavingResources] = useState(false);
+  const [filterText, setFilterText] = useState(""); // Add filterText state
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Helper: ensure resource is always an array
@@ -176,6 +178,11 @@ export function MainContent() {
   // Select all resources button handler
   const handleSelectAllResources = () => {
     setSelectedResources(extractedResources.map(r => r.id));
+  };
+
+  // Deselect all resources button handler
+  const handleDeselectAllResources = () => {
+    setSelectedResources([]);
   };
 
   // Save selected resources
@@ -323,23 +330,29 @@ export function MainContent() {
 
           <div className="py-4">
             <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <div className="text-sm text-muted-foreground">
-                  {selectedResources.length} of {extractedResources.length} selected
-                </div>
+              <div className="flex items-center gap-2 mb-2">
+                <Input
+                  type="text"
+                  placeholder="Filter resources..."
+                  value={filterText}
+                  onChange={(e) => setFilterText(e.target.value)}
+                  className="max-w-xs"
+                />
+                {extractedResources && extractedResources.length > 0 && (
+                  <>
+                    <Button size="sm" variant="secondary" onClick={handleSelectAllResources}>
+                      Select All
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={handleDeselectAllResources}>
+                      Deselect All
+                    </Button>
+                  </>
+                )}
               </div>
-
-              {extractedResources && extractedResources.length > 0 && (
-                <div className="flex justify-end mb-2">
-                  <Button size="sm" variant="secondary" onClick={handleSelectAllResources}>
-                    Select All Resources
-                  </Button>
-                </div>
-              )}
 
               {/* Scrollable resource list if more than 5 */}
               <div className={`space-y-2${extractedResources.length > 5 ? ' max-h-80 overflow-y-auto pr-2' : ''}`}>
-                {extractedResources.map((resource) => (
+                {extractedResources.filter(resource => resource.title.toLowerCase().includes(filterText.toLowerCase())).map((resource) => (
                   <div key={resource.id} className="flex items-start gap-3 p-3 border rounded-md">
                     <Checkbox
                       id={`resource-${resource.id}`}

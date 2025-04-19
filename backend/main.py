@@ -298,7 +298,7 @@ async def search_resources(topics: List[Dict]) -> Dict:
         }
 
 
-@app.delete("/api/delete_pdf")
+@app.delete("/api/delete-pdf")
 async def delete_pdf(request: Request):
     data = await request.json()
     uuid = data.get("uuid")
@@ -313,9 +313,10 @@ async def delete_pdf(request: Request):
     blob_upload = bucket.blob(blob_name_upload)
     if blob_upload.exists():
         blob_upload.delete()
+        print("PDF in cloud storage deleted successfully.")
         return {"status": "deleted"}
     else:
-        raise HTTPException(status_code=404, detail="File not found in uploads/{uid}/")
+        raise HTTPException(status_code=404, detail="File not found in {uuid}/{filename}")
 
 
 @app.post("/api/analyze-pdf")
