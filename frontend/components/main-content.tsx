@@ -29,6 +29,8 @@ interface ExtractedResource {
   type: string;
   url: string;
   confidence: number;
+  firestoreId?: string;
+  uniqueId?: string;
 }
 
 export function MainContent() {
@@ -171,6 +173,11 @@ export function MainContent() {
     )
   }
 
+  // Select all resources button handler
+  const handleSelectAllResources = () => {
+    setSelectedResources(extractedResources.map(r => r.id));
+  };
+
   // Save selected resources
   const saveSelectedResources = async () => {
     setSavingResources(true);
@@ -189,11 +196,12 @@ export function MainContent() {
         title: fileName
       });
 
-      // Add each selected resource to the resources subcollection
+      // Save each selected resource to a new document, and include a unique id (not the url) inside the document
       const resourcesCollectionRef = collection(db, "users", uid, "pdfs", pdfUuid, "resources");
       for (const resource of extractedResources.filter((r) => selectedResources.includes(r.id))) {
         const resourceDocRef = doc(resourcesCollectionRef);
-        await setDoc(resourceDocRef, resource);
+        const uniqueResourceId = uuidv4();
+        await setDoc(resourceDocRef, { ...resource, uniqueId: uniqueResourceId, firestoreId: resourceDocRef.id });
       }
 
       setShowResults(false); // Hide results window/modal after save
@@ -320,6 +328,14 @@ export function MainContent() {
                   {selectedResources.length} of {extractedResources.length} selected
                 </div>
               </div>
+
+              {extractedResources && extractedResources.length > 0 && (
+                <div className="flex justify-end mb-2">
+                  <Button size="sm" variant="secondary" onClick={handleSelectAllResources}>
+                    Select All Resources
+                  </Button>
+                </div>
+              )}
 
               {/* Scrollable resource list if more than 5 */}
               <div className={`space-y-2${extractedResources.length > 5 ? ' max-h-80 overflow-y-auto pr-2' : ''}`}>

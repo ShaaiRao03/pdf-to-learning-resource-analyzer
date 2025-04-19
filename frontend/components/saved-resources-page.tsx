@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Trash2, FileText, X, Pencil } from "lucide-react"
+import { Trash2, FileText, X, Pencil, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -17,7 +17,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { auth } from "@/lib/firebase";
-import { getFirestore, collection, doc, getDocs } from "firebase/firestore"
+import { getFirestore, collection, doc, getDocs, deleteDoc } from "firebase/firestore"
+import { getStorage, ref as storageRef, deleteObject } from "firebase/storage";
 
 export function SavedResourcesPage() {
   const [savedPdfs, setSavedPdfs] = useState([])
@@ -30,12 +31,19 @@ export function SavedResourcesPage() {
   const [filterText, setFilterText] = useState("")
   const [editingTitleId, setEditingTitleId] = useState(null)
   const [editingTitleValue, setEditingTitleValue] = useState("")
+  const [finalDeleteDialogOpen, setFinalDeleteDialogOpen] = useState(false);
+  const [pendingDeletePdfId, setPendingDeletePdfId] = useState(null);
+  const [pendingDeletePdfStoragePath, setPendingDeletePdfStoragePath] = useState(null);
+  const [isDeletingPdf, setIsDeletingPdf] = useState(false);
+  const [isDeletingResources, setIsDeletingResources] = useState(false);
+  const [showDeleteLastResourceDialog, setShowDeleteLastResourceDialog] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const titleInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const fetchData = async () => {
       const user = auth.currentUser;
-      if (!user) return;
+      if (!user) { setIsLoading(false); return; }
       const db = getFirestore();
       const pdfsCol = collection(db, "users", user.uid, "pdfs");
       const pdfsSnap = await getDocs(pdfsCol);
@@ -49,6 +57,7 @@ export function SavedResourcesPage() {
         pdfs.push({ id: pdfDoc.id, ...pdfData, resources });
       }
       setSavedPdfs(pdfs);
+      setIsLoading(false);
     };
     fetchData();
   }, []);
@@ -60,37 +69,122 @@ export function SavedResourcesPage() {
     setDialogOpen(true)
   }
 
-  // Toggle resource selection
+  // When user selects a resource, store its Firestore document id (resource.id)
   const toggleResourceSelection = (resourceId) => {
     setSelectedResources((prev) =>
       prev.includes(resourceId) ? prev.filter((id) => id !== resourceId) : [...prev, resourceId],
-    )
-  }
+    );
+  };
 
-  // Remove selected resources
-  const removeSelectedResources = () => {
-    if (selectedPdf && selectedResources.length > 0) {
-      setSavedPdfs((pdfs) => {
-        const updatedPdfs = pdfs.map((pdf) =>
-          pdf.id === selectedPdf.id
-            ? {
-                ...pdf,
-                resources: pdf.resources.filter((resource) => !selectedResources.includes(resource.id)),
-              }
-            : pdf,
-        )
-        const remainingResources = selectedPdf.resources.filter((resource) => !selectedResources.includes(resource.id));
-        if (remainingResources.length === 0) {
-          setDialogOpen(false);
-          return updatedPdfs.filter(pdf => pdf.id !== selectedPdf.id);
-        } else {
-          setSelectedPdf(prev => prev ? { ...prev, resources: remainingResources } : prev);
-        }
-        return updatedPdfs;
-      });
-      setSelectedResources([]);
+  // Delete a PDF and all its resources from Firestore
+  const handleDeletePdf = async (pdfId) => {
+    setIsDeletingPdf(true);
+    try {
+      const user = auth.currentUser;
+      if (!user) throw new Error("User not authenticated");
+      const db = getFirestore();
+      // Delete all resources in the subcollection
+      const resourcesCol = collection(db, "users", user.uid, "pdfs", pdfId, "resources");
+      const resourcesSnap = await getDocs(resourcesCol);
+      for (const resourceDoc of resourcesSnap.docs) {
+        await deleteDoc(resourceDoc.ref);
+      }
+      // Delete the PDF document itself
+      await deleteDoc(doc(db, "users", user.uid, "pdfs", pdfId));
+      setSavedPdfs((pdfs) => pdfs.filter((pdf) => pdf.id !== pdfId));
+      setSelectedPdf(null);
+      setDialogOpen(false);
+    } catch (err) {
+      alert("Failed to delete PDF: " + (err.message || err));
+    } finally {
+      setIsDeletingPdf(false);
+      setFinalDeleteDialogOpen(false);
+      setPendingDeletePdfId(null);
     }
-  }
+  };
+
+  // Helper to delete PDF in both Firestore and Cloud Storage
+  const deletePdfCompletely = async (pdfId, storagePath) => {
+    setIsDeletingPdf(true);
+    try {
+      const user = auth.currentUser;
+      if (!user) throw new Error("User not authenticated");
+      const db = getFirestore();
+      // Delete all resources under this PDF
+      const resourcesCol = collection(db, "users", user.uid, "pdfs", pdfId, "resources");
+      const resourcesSnap = await getDocs(resourcesCol);
+      for (const docSnap of resourcesSnap.docs) {
+        await deleteDoc(doc(db, "users", user.uid, "pdfs", pdfId, "resources", docSnap.id));
+      }
+      // Delete the PDF document itself
+      await deleteDoc(doc(db, "users", user.uid, "pdfs", pdfId));
+      // Delete from Cloud Storage if path provided
+      if (storagePath) {
+        const storage = getStorage();
+        const fileRef = storageRef(storage, storagePath);
+        await deleteObject(fileRef);
+      }
+      setSavedPdfs((pdfs) => pdfs.filter((pdf) => pdf.id !== pdfId));
+      setSelectedPdf(null);
+      setDialogOpen(false);
+    } catch (err) {
+      alert("Failed to delete PDF: " + (err.message || err));
+    } finally {
+      setIsDeletingPdf(false);
+      setFinalDeleteDialogOpen(false);
+      setShowDeleteLastResourceDialog(false);
+    }
+  };
+
+  // Delete selected resources from a PDF
+  const handleDeleteSelectedResources = async () => {
+    if (!selectedPdf || selectedResources.length === 0) return;
+    const total = selectedPdf.resources.length;
+    const sel = selectedResources.length;
+    // If user is deleting all resources, show loader and keep dialog open until done
+    if (sel === total && total > 0) {
+      setIsDeletingPdf(true);
+      try {
+        await deletePdfCompletely(selectedPdf.id, selectedPdf.storagePath || selectedPdf.filePath || null);
+      } finally {
+        setIsDeletingPdf(false);
+        setRemoveSelectedDialogOpen(false);
+      }
+      return;
+    }
+    setIsDeletingResources(true);
+    try {
+      const user = auth.currentUser;
+      if (!user) throw new Error("User not authenticated");
+      const db = getFirestore();
+      // Use the Firestore document id (resource.firestoreId) for deletion
+      const resourcesToDelete = selectedPdf.resources.filter(r => selectedResources.includes(r.id));
+      for (const resource of resourcesToDelete) {
+        const firestoreId = resource.firestoreId || resource.id;
+        await deleteDoc(doc(db, "users", user.uid, "pdfs", selectedPdf.id, "resources", firestoreId));
+      }
+      setSavedPdfs((pdfs) => pdfs.map((pdf) =>
+        pdf.id === selectedPdf.id
+          ? { ...pdf, resources: pdf.resources.filter((r) => !selectedResources.includes(r.id)) }
+          : pdf
+      ));
+      const remainingResources = selectedPdf.resources.filter((r) => !selectedResources.includes(r.id));
+      setSelectedPdf((prev) => prev ? { ...prev, resources: remainingResources } : prev);
+      setDialogOpen(true);
+      setSelectedResources([]);
+    } catch (err) {
+      alert("Failed to delete resources: " + (err.message || err));
+    } finally {
+      setIsDeletingResources(false);
+      setRemoveSelectedDialogOpen(false);
+    }
+  };
+
+  // Select all resources button handler
+  const handleSelectAllResources = () => {
+    if (!selectedPdf) return;
+    setSelectedResources(selectedPdf.resources.map(r => r.id));
+  };
 
   // Filter and sort resources by filterText and confidence
   const getFilteredResources = () => {
@@ -107,6 +201,15 @@ export function SavedResourcesPage() {
       filtered = [...filtered].sort((a, b) => b.confidence - a.confidence)
     }
     return filtered
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="animate-spin h-8 w-8 mr-2 text-muted-foreground" />
+        <span>Loading resources...</span>
+      </div>
+    );
   }
 
   return (
@@ -209,6 +312,13 @@ export function SavedResourcesPage() {
               className="max-w-xs"
             />
           </div>
+          {selectedPdf && selectedPdf.resources && selectedPdf.resources.length > 0 && (
+            <div className="flex justify-end mb-2">
+              <Button size="sm" variant="secondary" onClick={handleSelectAllResources}>
+                Select All Resources
+              </Button>
+            </div>
+          )}
           <div className="py-4">
             {getFilteredResources().length > 0 ? (
               <div
@@ -285,8 +395,8 @@ export function SavedResourcesPage() {
               <Button
                 variant="destructive"
                 onClick={() => {
-                  setDeleteConfirm({ pdfId: selectedPdf?.id })
-                  setDeleteDialogOpen(true)
+                  setPendingDeletePdfId(selectedPdf?.id); 
+                  setFinalDeleteDialogOpen(true);
                 }}
               >
                 <Trash2 className="h-4 w-4 mr-2" />
@@ -314,25 +424,26 @@ export function SavedResourcesPage() {
             <DialogTitle>Remove Selected Resources</DialogTitle>
             <DialogDescription>
               {(() => {
-                // Determine if all or only resource(s) are being deleted
                 const total = selectedPdf?.resources?.length || 0;
                 const sel = selectedResources.length;
                 if (sel === total && total > 0) {
-                  return 'Deleting this will cause the PDF to be deleted.';
+                  return 'Are you sure you want to delete all resources and the entire PDF? This will also delete the file from cloud storage.';
                 }
                 if (total === 1 && sel === 1) {
-                  return 'Deleting this will cause the PDF to be deleted.';
+                  return 'Deleting the last resource will delete the entire PDF. Do you want to continue?';
                 }
                 return 'Are you sure you want to delete the selected resource(s)? This action cannot be undone.';
               })()}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRemoveSelectedDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setRemoveSelectedDialogOpen(false)} disabled={isDeletingResources || isDeletingPdf}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={() => { removeSelectedResources(); setRemoveSelectedDialogOpen(false); }}>
-              Delete
+            <Button variant="destructive" onClick={handleDeleteSelectedResources} disabled={isDeletingResources || isDeletingPdf}>
+              {(isDeletingPdf && selectedResources.length === (selectedPdf?.resources?.length || 0))
+                ? (<><Loader2 className="animate-spin h-4 w-4 mr-2 inline" /> Deleting...</>)
+                : (isDeletingResources ? (<><Loader2 className="animate-spin h-4 w-4 mr-2 inline" /> Deleting...</>) : "Delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -357,8 +468,50 @@ export function SavedResourcesPage() {
             >
               Cancel
             </Button>
-            <Button variant="destructive">
+            <Button variant="destructive" onClick={() => { setPendingDeletePdfId(deleteConfirm.pdfId); setFinalDeleteDialogOpen(true); setDeleteDialogOpen(false); }}>
               Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Final Delete Confirmation Dialog */}
+      <Dialog open={finalDeleteDialogOpen} onOpenChange={setFinalDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Are you absolutely sure?</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. This will permanently delete the PDF and all its saved resources from your account.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFinalDeleteDialogOpen(false)} disabled={isDeletingPdf}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => {
+              handleDeletePdf(pendingDeletePdfId);
+            }} disabled={isDeletingPdf}>
+              {isDeletingPdf ? (<><Loader2 className="animate-spin h-4 w-4 mr-2 inline" /> Deleting...</>) : "Yes, delete PDF"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Last Resource => Delete PDF Dialog */}
+      <Dialog open={showDeleteLastResourceDialog} onOpenChange={setShowDeleteLastResourceDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete PDF?</DialogTitle>
+            <DialogDescription>
+              This will delete the entire PDF and all its data from your account, including the file in cloud storage. Are you sure?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteLastResourceDialog(false)} disabled={isDeletingPdf}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => deletePdfCompletely(pendingDeletePdfId, pendingDeletePdfStoragePath)} disabled={isDeletingPdf}>
+              {isDeletingPdf ? (<><Loader2 className="animate-spin h-4 w-4 mr-2 inline" /> Deleting PDF...</>) : "Yes, delete PDF"}
             </Button>
           </DialogFooter>
         </DialogContent>
