@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
@@ -16,10 +16,11 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"; // Import Input component
+import { Input } from "@/components/ui/input"; 
 import { auth } from "@/lib/firebase";
 import { v4 as uuidv4 } from 'uuid';
 import { getFirestore, doc, setDoc, collection } from "firebase/firestore";
+import { useAuth } from "@/components/auth-provider";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
@@ -36,17 +37,26 @@ interface ExtractedResource {
 
 export function MainContent() {
   const router = useRouter()
-  const [fileSelected, setFileSelected] = useState(false)
-  const [fileName, setFileName] = useState("")
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const { userName } = useAuth();
+  const [fileSelected, setFileSelected] = useState(false);
+  const [fileName, setFileName] = useState("");
+  const [pdfUuid, setPdfUuid] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showResults, setShowResults] = useState(false)
   const [extractedResources, setExtractedResources] = useState<ExtractedResource[]>([])
   const [selectedResources, setSelectedResources] = useState<string[]>([])
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [pdfUuid, setPdfUuid] = useState<string | null>(null);
   const [savingResources, setSavingResources] = useState(false);
-  const [filterText, setFilterText] = useState(""); // Add filterText state
+  const [filterText, setFilterText] = useState(""); 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (selectedFile) {
+      setFileName(selectedFile.name);
+    } else {
+      setFileName("");
+    }
+  }, [selectedFile]);
 
   // Helper: ensure resource is always an array
   function ensureArray(val: any) {
@@ -68,8 +78,8 @@ export function MainContent() {
       return;
     }
     setFileSelected(true);
-    setFileName(file.name);
     setSelectedFile(file);
+    setPdfUuid(null); 
   };
 
   // Handle drag and drop
@@ -86,7 +96,6 @@ export function MainContent() {
       return;
     }
     setFileSelected(true);
-    setFileName(file.name);
     setSelectedFile(file);
   }
 
@@ -107,7 +116,7 @@ export function MainContent() {
 
       // Generate a UUID for this upload
       const newPdfUuid = uuidv4();
-      setPdfUuid(newPdfUuid); // Save UUID to state
+      setPdfUuid(newPdfUuid); 
 
       const formData = new FormData();
       formData.append("file", selectedFile);
@@ -211,7 +220,7 @@ export function MainContent() {
         await setDoc(resourceDocRef, { ...resource, uniqueId: uniqueResourceId, firestoreId: resourceDocRef.id });
       }
 
-      setShowResults(false); // Hide results window/modal after save
+      setShowResults(false); 
       setFileSelected(false);
       setFileName("");
       setSelectedResources([]);
@@ -225,11 +234,19 @@ export function MainContent() {
     }
   }
 
+  const clearUploadState = () => {
+    setFileSelected(false);
+    setFileName("");
+    setPdfUuid(null);
+    setSelectedFile(null);
+    setIsAnalyzing(false);
+  };
+
   return (
     <SidebarInset>
       <header className="flex h-16 items-center gap-4 border-b px-6">
         <SidebarTrigger className="-ml-2" />
-        <h2 className="text-lg font-semibold">PDF to Learning Resource Analyzer</h2>
+        <h2 className="text-lg font-semibold">{`Welcome${userName ? ", " + userName : ""}`}</h2>
       </header>
       <div className="flex-1 p-6">
         <div className="rounded-lg border border-border p-8 text-center">
@@ -278,11 +295,7 @@ export function MainContent() {
                           alert(err);
                         }
                       }
-                      setFileSelected(false);
-                      setFileName("");
-                      setSelectedFile(null);
-                      setExtractedResources([]);
-                      setSelectedResources([]);
+                      clearUploadState();
                       if (fileInputRef.current) fileInputRef.current.value = "";
                     }}
                   >

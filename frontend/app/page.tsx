@@ -5,7 +5,7 @@ import { useAuth } from "@/components/auth-provider";
 import { MainContent } from "@/components/main-content";
 
 export default function Home() {
-  const { user, loading } = useAuth();
+  const { user, loading, userName } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -17,5 +17,9 @@ export default function Home() {
   if (loading) return null; // Don't render sidebar or content until auth is loaded
   if (!user) return null; // Don't render content for unauthenticated
 
-  return <MainContent />;
+  return (
+    <>
+      <MainContent />
+    </>
+  );
 }

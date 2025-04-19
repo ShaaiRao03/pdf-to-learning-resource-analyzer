@@ -14,6 +14,7 @@ export default function SignUpPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
@@ -25,14 +26,18 @@ export default function SignUpPage() {
       setError("Passwords do not match");
       return;
     }
+    if (!name.trim()) {
+      setError("Name is required");
+      return;
+    }
     setLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      // Create user in Firestore
+      // Create user in Firestore with name
       await createUserInFirestore({
         uid: userCredential.user.uid,
         email: userCredential.user.email || "",
-        name: userCredential.user.displayName || undefined,
+        name: name.trim(),
       });
       router.replace("/login");
     } catch (err: any) {
@@ -51,6 +56,10 @@ export default function SignUpPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <form className="space-y-4" onSubmit={handleSubmit}>
+            <div className="space-y-2">
+              <Label htmlFor="name">Name</Label>
+              <Input id="name" type="text" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} required />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" placeholder="m@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />

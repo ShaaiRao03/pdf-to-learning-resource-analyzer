@@ -4,7 +4,7 @@ import { ClientLayoutShell } from "@/components/ClientLayoutShell";
 import "./globals.css";
 
 export const metadata = {
-  title: "PDF to Learning Resource Analyzer",
+  title: "Einstein AI",
   description: "Transform your PDFs into structured learning resources",
 };
 

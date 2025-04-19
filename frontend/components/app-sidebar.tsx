@@ -52,8 +52,8 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarContent>
-        <SidebarHeader className="h-16 flex items-center px-4 border-b border-sidebar-border">
-          <h1 className="text-lg font-semibold">PDF Analyzer</h1>
+        <SidebarHeader className="h-16 flex items-center justify-center px-4 border-b border-sidebar-border">
+          <h1 className="text-lg font-semibold w-full text-center">Einstein AI</h1>
         </SidebarHeader>
         <SidebarMenu>
           {navItems.map((item) => (
