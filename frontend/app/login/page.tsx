@@ -60,12 +60,10 @@ export default function LoginPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-              <div className="text-sm text-right">
-                <Link href="/forgot-password" className="text-primary underline underline-offset-4 hover:text-primary/90">
-                  Forgot password?
-                </Link>
-              </div>
+              <Input id="password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            </div>
+            <div className="flex justify-end">
+              <Link href="/forgot-password" className="text-sm text-primary underline underline-offset-4 hover:text-primary/90">Forgot password?</Link>
             </div>
             {error && <div className="text-red-600 text-sm text-center">{error}</div>}
             <Button className="w-full" type="submit" disabled={loading}>
