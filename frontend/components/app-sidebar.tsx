@@ -51,10 +51,10 @@ export function AppSidebar() {
 
   return (
     <Sidebar>
-      <SidebarHeader className="h-16 flex items-center px-4 border-b border-sidebar-border">
-        <h1 className="text-lg font-semibold">PDF Analyzer</h1>
-      </SidebarHeader>
       <SidebarContent>
+        <SidebarHeader className="h-16 flex items-center px-4 border-b border-sidebar-border">
+          <h1 className="text-lg font-semibold">PDF Analyzer</h1>
+        </SidebarHeader>
         <SidebarMenu>
           {navItems.map((item) => (
             <SidebarMenuItem key={item.title}>
@@ -66,7 +66,10 @@ export function AppSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
           ))}
-          <SidebarMenuItem className="mt-auto">
+        </SidebarMenu>
+        <div className="flex-grow" />
+        <SidebarMenu>
+          <SidebarMenuItem className="mt-auto pb-6">
             <SidebarMenuButton onClick={handleLogout} className="flex items-center gap-2 text-red-600 hover:bg-red-50">
               <LogOut className="h-4 w-4" />
               <span>Log out</span>

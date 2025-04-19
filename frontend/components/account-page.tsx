@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { AlertCircle, Check } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { auth } from "@/lib/firebase"
+import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth"
 
 export function AccountPage() {
   const [currentPassword, setCurrentPassword] = useState("")
@@ -21,28 +23,34 @@ export function AccountPage() {
   const passwordIsStrong = newPassword.length >= 8
   const canSubmit = currentPassword && newPassword && confirmPassword && passwordsMatch && passwordIsStrong
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-
     if (!canSubmit) return
-
     setIsSubmitting(true)
     setError("")
     setSuccess(false)
-
-    // Simulate API call
-    setTimeout(() => {
-      // In a real app, you would call your API here
-
-      // For demo purposes, let's simulate a successful password change
+    try {
+      const user = auth.currentUser;
+      if (!user || !user.email) throw new Error("Not authenticated");
+      // Re-authenticate
+      const credential = EmailAuthProvider.credential(user.email, currentPassword);
+      await reauthenticateWithCredential(user, credential);
+      // Update password
+      await updatePassword(user, newPassword);
+      setSuccess(true);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err) {
+      let msg = err.message || "Failed to update password";
+      // Firebase returns this for wrong password
+      if (msg.includes("auth/invalid-credential")) {
+        msg = "Your current password is incorrect";
+      }
+      setError(msg);
+    } finally {
       setIsSubmitting(false)
-      setSuccess(true)
-
-      // Reset form
-      setCurrentPassword("")
-      setNewPassword("")
-      setConfirmPassword("")
-    }, 1500)
+    }
   }
 
   return (
