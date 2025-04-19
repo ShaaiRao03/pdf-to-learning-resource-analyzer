@@ -40,7 +40,12 @@ export function MainContent() {
   const { userName } = useAuth();
   const [fileSelected, setFileSelected] = useState(false);
   const [fileName, setFileName] = useState("");
-  const [pdfUuid, setPdfUuid] = useState<string | null>(null);
+  const [pdfUuid, setPdfUuid] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return window.sessionStorage.getItem('pdfUuid');
+    }
+    return null;
+  });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showResults, setShowResults] = useState(false)
@@ -57,6 +62,16 @@ export function MainContent() {
       setFileName("");
     }
   }, [selectedFile]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (pdfUuid) {
+        window.sessionStorage.setItem('pdfUuid', pdfUuid);
+      } else {
+        window.sessionStorage.removeItem('pdfUuid');
+      }
+    }
+  }, [pdfUuid]);
 
   // Helper: ensure resource is always an array
   function ensureArray(val: any) {
@@ -116,8 +131,11 @@ export function MainContent() {
 
       // Generate a UUID for this upload
       const newPdfUuid = uuidv4();
-      setPdfUuid(newPdfUuid); 
-
+      setPdfUuid(newPdfUuid);
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.setItem('pdfUuid', newPdfUuid);
+      }
+      
       const formData = new FormData();
       formData.append("file", selectedFile);
       formData.append("uuid", newPdfUuid);
@@ -238,6 +256,9 @@ export function MainContent() {
     setFileSelected(false);
     setFileName("");
     setPdfUuid(null);
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem('pdfUuid');
+    }
     setSelectedFile(null);
     setIsAnalyzing(false);
   };

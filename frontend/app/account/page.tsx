@@ -8,6 +8,7 @@ import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 export default function Account() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const { userName } = useAuth();
 
   useEffect(() => {
     if (!loading && !user) {
@@ -22,7 +23,7 @@ export default function Account() {
     <SidebarInset>
       <header className="flex h-16 items-center gap-4 border-b px-6">
         <SidebarTrigger className="-ml-2" />
-        <h2 className="text-lg font-semibold">Einstein AI</h2>
+        <h2 className="text-lg font-semibold">{`Welcome${userName ? ", " + userName : ""}`}</h2>
       </header>
       <AccountPage />
     </SidebarInset>
