@@ -27,6 +27,8 @@ export async function addResourceToPdf(uid: string, pdfId: string, resource: { r
   const pdfsRef = collection(userDocRef, "pdfs");
   const pdfDocRef = doc(pdfsRef, pdfId);
   const resourcesRef = collection(pdfDocRef, "resources");
-  const resourceDocRef = doc(resourcesRef, resource.resourceID);
-  await setDoc(resourceDocRef, resource);
+  // Always use Firestore doc ID as the resource id
+  const resourceDocRef = doc(resourcesRef); // auto-generate ID
+  const resourceWithId = { ...resource, id: resourceDocRef.id };
+  await setDoc(resourceDocRef, resourceWithId);
 }

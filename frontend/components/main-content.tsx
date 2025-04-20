@@ -300,7 +300,9 @@ export function MainContent() {
         const resource = extractedResources.find(r => r.id === resourceId);
         if (!resource) continue;
         const resourceRef = doc(collection(db, "users", user.uid, "pdfs", pdfUuid, "resources"));
-        batch.push(setDoc(resourceRef, resource));
+        // Overwrite id to Firestore doc ID
+        const resourceWithId = { ...resource, id: resourceRef.id };
+        batch.push(setDoc(resourceRef, resourceWithId));
       }
       await Promise.all(batch);
       setFileSelected(false);

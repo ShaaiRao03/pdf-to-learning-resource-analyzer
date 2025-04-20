@@ -24,7 +24,7 @@ load_dotenv()
 
 # Initialize Firebase Admin only once
 if not firebase_admin._apps:
-    cred = credentials.Certificate(r"C:\Users\User\Desktop\pdf-to-learning-resource-analyzer\backend\credentials\einstein-ai-ae343-firebase-adminsdk-fbsvc-4c43d7c0fa.json")
+    cred = credentials.Certificate(r"C:\Users\User\Desktop\pdf-to-learning-resource-analyzer\backend\credentials\einstein-ai-prod-13811-firebase-adminsdk-fbsvc-e6e7596f60.json")
     firebase_admin.initialize_app(cred)
 
 # Initialize clients

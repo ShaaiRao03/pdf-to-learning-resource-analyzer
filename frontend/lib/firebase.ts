@@ -3,13 +3,13 @@ import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyASLskhLk5-3HxzrOeYwupUd2FyNGkmfbo",
-  authDomain: "einstein-ai-ae343.firebaseapp.com",
-  projectId: "einstein-ai-ae343",
-  storageBucket: "einstein-ai-ae343.firebasestorage.app",
-  messagingSenderId: "939323046777",
-  appId: "1:939323046777:web:d38fc1ccaac7ee645d8da8",
-  measurementId: "G-0NX6072LZV"
+  apiKey: "AIzaSyDy_T3OkHAdPElIqNBR1fZIo8ii_yUaAqo",
+  authDomain: "einstein-ai-prod-13811.firebaseapp.com",
+  projectId: "einstein-ai-prod-13811",
+  storageBucket: "einstein-ai-prod-13811.firebasestorage.app",
+  messagingSenderId: "623603689151",
+  appId: "1:623603689151:web:28f4a336b123d36151080a",
+  measurementId: "G-JKB54EN11G"
 };
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];

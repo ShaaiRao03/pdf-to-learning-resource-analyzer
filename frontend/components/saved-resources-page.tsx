@@ -51,7 +51,11 @@ export function SavedResourcesPage() {
         // Fetch resources subcollection
         const resourcesCol = collection(db, "users", user.uid, "pdfs", pdfDoc.id, "resources");
         const resourcesSnap = await getDocs(resourcesCol);
-        const resources = resourcesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const resources = resourcesSnap.docs.map(doc => ({
+          ...doc.data(),
+          id: doc.id, // always Firestore doc ID
+          firestoreId: doc.id // explicit for deletion
+        }));
         pdfs.push({ id: pdfDoc.id, ...pdfData, resources });
       }
       setSavedPdfs(pdfs);
