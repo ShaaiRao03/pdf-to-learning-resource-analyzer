@@ -30,8 +30,6 @@ export function SavedResourcesPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [removeSelectedDialogOpen, setRemoveSelectedDialogOpen] = useState(false)
   const [filterText, setFilterText] = useState("")
-  const [editingTitleId, setEditingTitleId] = useState(null)
-  const [editingTitleValue, setEditingTitleValue] = useState("")
   const [finalDeleteDialogOpen, setFinalDeleteDialogOpen] = useState(false);
   const [pendingDeletePdfId, setPendingDeletePdfId] = useState(null);
   const [pendingDeletePdfStoragePath, setPendingDeletePdfStoragePath] = useState(null);
@@ -39,7 +37,6 @@ export function SavedResourcesPage() {
   const [isDeletingResources, setIsDeletingResources] = useState(false);
   const [showDeleteLastResourceDialog, setShowDeleteLastResourceDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const titleInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -264,45 +261,11 @@ export function SavedResourcesPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5 text-muted-foreground" />
-                  {editingTitleId === pdf.id ? (
-                    <input
-                      ref={titleInputRef}
-                      type="text"
-                      value={editingTitleValue}
-                      onChange={(e) => setEditingTitleValue(e.target.value)}
-                      onClick={(e) => e.stopPropagation()}
-                      onBlur={() => {
-                        setSavedPdfs((pdfs) =>
-                          pdfs.map((p) => (p.id === pdf.id ? { ...p, title: editingTitleValue } : p)),
-                        )
-                        setEditingTitleId(null)
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          setSavedPdfs((pdfs) =>
-                            pdfs.map((p) => (p.id === pdf.id ? { ...p, title: editingTitleValue } : p)),
-                          )
-                          setEditingTitleId(null)
-                        }
-                      }}
-                      className="text-base font-semibold truncate max-w-[48ch] px-1 py-0.5 border rounded focus:outline-none focus:ring-2 focus:ring-primary"
-                      autoFocus
-                    />
-                  ) : (
-                    <span
-                      className="truncate max-w-[48ch] text-base font-semibold cursor-pointer group flex items-center gap-1"
-                      title="Click to edit title"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setEditingTitleId(pdf.id)
-                        setEditingTitleValue(pdf.title)
-                        setTimeout(() => titleInputRef.current?.focus(), 0)
-                      }}
-                    >
-                      {pdf.title}
-                      <Pencil className="w-4 h-4 text-muted-foreground opacity-60 group-hover:opacity-100 transition-opacity" />
-                    </span>
-                  )}
+                  <span
+                    className="truncate max-w-[48ch] text-base font-semibold group flex items-center gap-1"
+                  >
+                    {pdf.title}
+                  </span>
                 </CardTitle>
                 <CardDescription>Added on {pdf.date}</CardDescription>
               </CardHeader>
