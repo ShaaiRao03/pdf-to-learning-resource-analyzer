@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input"
 import { auth } from "@/lib/firebase";
 import { getFirestore, collection, doc, getDocs, deleteDoc } from "firebase/firestore"
 import { getStorage, ref as storageRef, deleteObject } from "firebase/storage";
+import { toast } from "@/hooks/use-toast";
 
 export function SavedResourcesPage() {
   const [savedPdfs, setSavedPdfs] = useState([])
@@ -95,7 +96,11 @@ export function SavedResourcesPage() {
       setSelectedPdf(null);
       setDialogOpen(false);
     } catch (err) {
-      alert("Failed to delete PDF: " + (err.message || err));
+      toast({
+        title: "Error",
+        description: "Failed to delete PDF: " + (err && typeof err === 'object' && 'message' in err ? err.message : String(err)),
+        variant: "destructive"
+      });
     } finally {
       setIsDeletingPdf(false);
       setFinalDeleteDialogOpen(false);
@@ -143,7 +148,11 @@ export function SavedResourcesPage() {
       setSelectedPdf(null);
       setDialogOpen(false);
     } catch (err) {
-      alert("Failed to delete PDF: " + (err.message || err));
+      toast({
+        title: "Error",
+        description: "Failed to delete PDF: " + (err && typeof err === 'object' && 'message' in err ? err.message : String(err)),
+        variant: "destructive"
+      });
     } finally {
       setIsDeletingPdf(false);
       setFinalDeleteDialogOpen(false);
@@ -188,7 +197,11 @@ export function SavedResourcesPage() {
       setDialogOpen(true);
       setSelectedResources([]);
     } catch (err) {
-      alert("Failed to delete resources: " + (err.message || err));
+      toast({
+        title: "Error",
+        description: "Failed to delete resources: " + (err && typeof err === 'object' && 'message' in err ? err.message : String(err)),
+        variant: "destructive"
+      });
     } finally {
       setIsDeletingResources(false);
       setRemoveSelectedDialogOpen(false);

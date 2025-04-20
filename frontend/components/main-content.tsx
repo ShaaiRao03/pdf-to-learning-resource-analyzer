@@ -21,6 +21,7 @@ import { auth } from "@/lib/firebase";
 import { v4 as uuidv4 } from 'uuid';
 import { getFirestore, doc, setDoc, collection } from "firebase/firestore";
 import { useAuth } from "@/components/auth-provider";
+import { toast } from "@/hooks/use-toast";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
@@ -54,6 +55,7 @@ export function MainContent() {
   const [savingResources, setSavingResources] = useState(false);
   const [filterText, setFilterText] = useState(""); 
   const [showUploadConfirm, setShowUploadConfirm] = useState(false);
+  const [haltingProcessing, setHaltingProcessing] = useState(false);
   const pendingUpload = useRef<null | (() => void)>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -90,13 +92,27 @@ export function MainContent() {
       return;
     }
     if (file.type !== "application/pdf") {
-      alert("Only PDF files are allowed.");
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      toast({
+        title: "File type error",
+        description: "Only PDF files are allowed.",
+        variant: "destructive",
+        duration: 3000
+      });
+      setTimeout(() => {
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }, 100);
       return;
     }
     if (file.size > MAX_FILE_SIZE) {
-      alert("File size must be less than 5MB.");
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      toast({
+        title: "File size error",
+        description: "File size must be less than 5MB.",
+        variant: "destructive",
+        duration: 3000
+      });
+      setTimeout(() => {
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }, 100);
       return;
     }
     setFileSelected(true);
@@ -114,13 +130,27 @@ export function MainContent() {
       return;
     }
     if (file.type !== "application/pdf") {
-      alert("Only PDF files are allowed.");
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      toast({
+        title: "File type error",
+        description: "Only PDF files are allowed.",
+        variant: "destructive",
+        duration: 3000
+      });
+      setTimeout(() => {
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }, 100);
       return;
     }
     if (file.size > MAX_FILE_SIZE) {
-      alert("File size must be less than 5MB.");
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      toast({
+        title: "File size error",
+        description: "File size must be less than 5MB.",
+        variant: "destructive",
+        duration: 3000
+      });
+      setTimeout(() => {
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }, 100);
       return;
     }
     setFileSelected(true);
@@ -207,7 +237,12 @@ export function MainContent() {
             setIsAnalyzing(false);
             break;
           } else if (data.status === "failed" || data.status === "cancelled") {
-            alert(data.error || "Processing failed/cancelled");
+            toast({
+              title: "Processing Status",
+              description: data.error || "Processing failed/cancelled",
+              variant: "destructive",
+              duration: 3000
+            });
             setIsAnalyzing(false);
             break;
           }
@@ -217,7 +252,12 @@ export function MainContent() {
       pollStatus(newPdfUuid);
     } catch (err) {
       setIsAnalyzing(false);
-      alert("Error analyzing PDF");
+      toast({
+        title: "Error",
+        description: "Error analyzing PDF",
+        variant: "destructive",
+        duration: 3000
+      });
     }
   };
 
@@ -244,35 +284,33 @@ export function MainContent() {
     try {
       const user = auth.currentUser;
       if (!user) throw new Error("User not authenticated");
-      const uid = user.uid;
-      if (!pdfUuid) throw new Error("No PDF UUID found");
-      if (!fileName) throw new Error("No PDF title found");
-      if (selectedResources.length === 0) throw new Error("No resources selected");
-
       const db = getFirestore();
-      // Create the PDF document with title
-      const pdfDocRef = doc(db, "users", uid, "pdfs", pdfUuid);
-      await setDoc(pdfDocRef, {
-        title: fileName
-      });
-
-      // Save each selected resource to a new document, and include a unique id (not the url) inside the document
-      const resourcesCollectionRef = collection(db, "users", uid, "pdfs", pdfUuid, "resources");
-      for (const resource of extractedResources.filter((r) => selectedResources.includes(r.id))) {
-        const resourceDocRef = doc(resourcesCollectionRef);
-        const uniqueResourceId = uuidv4();
-        await setDoc(resourceDocRef, { ...resource, uniqueId: uniqueResourceId, firestoreId: resourceDocRef.id });
+      const batch = [];
+      for (const resourceId of selectedResources) {
+        const resource = extractedResources.find(r => r.id === resourceId);
+        if (!resource) continue;
+        const resourceRef = doc(collection(db, "users", user.uid, "pdfs", pdfUuid || "", "resources"));
+        batch.push(setDoc(resourceRef, resource));
       }
-
-      setShowResults(false); 
+      await Promise.all(batch);
       setFileSelected(false);
       setFileName("");
       setSelectedResources([]);
       setSelectedFile(null);
-
-      alert("Resources saved successfully!");
+      setShowResults(false); // Close the saved resource modal after saving
+      toast({
+        title: "Success",
+        description: "Resources saved successfully!",
+        variant: "default",
+        duration: 3000
+      });
     } catch (err) {
-      alert("Failed to save resources: " + (err.message || err));
+      toast({
+        title: "Error",
+        description: "Failed to save resources: " + (err && typeof err === 'object' && 'message' in err ? err.message : String(err)),
+        variant: "destructive",
+        duration: 3000
+      });
     } finally {
       setSavingResources(false);
     }
@@ -302,18 +340,14 @@ export function MainContent() {
           <p className="text-muted-foreground mb-6">Transform your PDFs into structured learning resources</p>
           <div className="flex flex-col items-center">
             <div
-              className="w-full max-w-md p-8 border-2 border-dashed border-muted-foreground/25 rounded-lg text-center mb-6 cursor-pointer hover:border-primary/50 transition-colors"
+              className={`w-full max-w-md p-8 border-2 border-dashed border-muted-foreground/25 rounded-lg text-center mb-6 ${isAnalyzing ? 'pointer-events-none opacity-60' : 'cursor-pointer hover:border-primary/50 transition-colors'}`}
               onClick={() => {
-                if (isAnalyzing) {
-                  setShowUploadConfirm(true);
-                  pendingUpload.current = () => document.getElementById("pdf-upload")?.click();
-                } else {
-                  document.getElementById("pdf-upload")?.click();
-                }
+                if (isAnalyzing) return; // Prevent click
+                document.getElementById("pdf-upload")?.click();
               }}
               onDrop={isAnalyzing ? undefined : handleDrop}
               onDragOver={isAnalyzing ? undefined : handleDragOver}
-              style={{ opacity: isAnalyzing ? 0.5 : 1 }}
+              style={{ opacity: isAnalyzing ? 0.6 : 1 }}
             >
               <input
                 id="pdf-upload"
@@ -339,7 +373,7 @@ export function MainContent() {
                           const user = auth.currentUser;
                           if (user) {
                             const idToken = await user.getIdToken();
-                            const res = await fetch("http://localhost:8000/api/delete_pdf", {
+                            await fetch("http://localhost:8000/api/delete-pdf", {
                               method: "DELETE",
                               headers: {
                                 "Content-Type": "application/json",
@@ -349,7 +383,12 @@ export function MainContent() {
                             });
                           }
                         } catch (err) {
-                          alert(err);
+                          toast({
+                            title: "Error",
+                            description: err && typeof err === 'object' && 'message' in err ? err.message : String(err),
+                            variant: "destructive",
+                            duration: 3000
+                          });
                         }
                       }
                       clearUploadState();
@@ -367,10 +406,17 @@ export function MainContent() {
             <div className="flex gap-4 mt-4">
               <Button size="lg" className="px-8" disabled={!fileSelected || isAnalyzing} onClick={analyzePDF}>
                 {isAnalyzing ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processing your request...
-                  </>
+                  haltingProcessing ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Halting process...
+                    </>
+                  ) : (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Processing your request...
+                    </>
+                  )
                 ) : (
                   "Analyze PDF"
                 )}
@@ -382,6 +428,50 @@ export function MainContent() {
                 onClick={() => setShowResults(true)}
               >
                 View Resources
+              </Button>
+              {/* Cancel Processing Button */}
+              <Button
+                size="lg"
+                variant="destructive"
+                disabled={!isAnalyzing || haltingProcessing}
+                onClick={async () => {
+                  if (!pdfUuid) return;
+                  setHaltingProcessing(true);
+                  try {
+                    const user = auth.currentUser;
+                    if (user) {
+                      const idToken = await user.getIdToken();
+                      const resp = await fetch("http://localhost:8000/api/halt_pdf_process", {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                          "x-firebase-token": idToken,
+                        },
+                        body: JSON.stringify({ uuid: pdfUuid }),
+                      });
+                      if (!resp.ok) throw new Error("Failed to halt processing");
+                      console.log("Processing cancelled");
+                    }
+                  } catch (err) {
+                    toast({
+                      title: "Error",
+                      description: "Failed to cancel processing",
+                      variant: "destructive",
+                      duration: 3000
+                    });
+                  } finally {
+                    setHaltingProcessing(false);
+                  }
+                }}
+              >
+                {haltingProcessing ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Cancelling...
+                  </>
+                ) : (
+                  "Cancel Processing"
+                )}
               </Button>
             </div>
           </div>
