@@ -53,6 +53,8 @@ export function MainContent() {
   const [selectedResources, setSelectedResources] = useState<string[]>([])
   const [savingResources, setSavingResources] = useState(false);
   const [filterText, setFilterText] = useState(""); 
+  const [showUploadConfirm, setShowUploadConfirm] = useState(false);
+  const pendingUpload = useRef<null | (() => void)>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -83,35 +85,47 @@ export function MainContent() {
   // Handle file selection
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
     if (file.type !== "application/pdf") {
       alert("Only PDF files are allowed.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
     if (file.size > MAX_FILE_SIZE) {
       alert("File size must be less than 5MB.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
     setFileSelected(true);
     setSelectedFile(file);
-    setPdfUuid(null); 
+    setPdfUuid(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   // Handle drag and drop
   const handleDrop = (e) => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
-    if (!file) return;
+    if (!file) {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
     if (file.type !== "application/pdf") {
       alert("Only PDF files are allowed.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
     if (file.size > MAX_FILE_SIZE) {
       alert("File size must be less than 5MB.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
     setFileSelected(true);
     setSelectedFile(file);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   const handleDragOver = (e) => {
@@ -139,56 +153,68 @@ export function MainContent() {
       const formData = new FormData();
       formData.append("file", selectedFile);
       formData.append("uuid", newPdfUuid);
-      
-      const res = await fetch("http://localhost:8000/api/analyze-pdf", {
+
+      await fetch("http://localhost:8000/api/analyze-pdf", {
         method: "POST",
         headers: {
           "x-firebase-token": idToken,
         },
         body: formData,
       });
-      const data = await res.json();
-      console.log("API response:", data);
-      setIsAnalyzing(false);
-      if (!data.success) {
-        alert(data.message || "Failed to analyze PDF");
-        return;
-      }
-      
-      // Handle missing or unexpected structure
-      const resources = [];
-      const resourceMap = data.analysis && data.analysis.resources ? data.analysis.resources : {};
-      for (const art of ensureArray(resourceMap.articles)) {
-        resources.push({
-          id: art.id || art.url || art.title,
-          title: art.title,
-          type: "article",
-          url: art.url,
-          confidence: typeof art.confidence === "number" ? art.confidence : (typeof art.score === "number" ? art.score : 1.0),
-        });
-      }
-      for (const vid of ensureArray(resourceMap.videos)) {
-        resources.push({
-          id: vid.id || vid.url || vid.title,
-          title: vid.title,
-          type: "video",
-          url: vid.url,
-          confidence: typeof vid.confidence === "number" ? vid.confidence : (typeof vid.score === "number" ? vid.score : 1.0),
-        });
-      }
-      for (const course of ensureArray(resourceMap.courses)) {
-        resources.push({
-          id: course.id || course.url || course.title,
-          title: course.title,
-          type: "course",
-          url: course.url,
-          confidence: typeof course.confidence === "number" ? course.confidence : (typeof course.score === "number" ? course.score : 1.0),
-        });
-      }
-      // Sort resources from high to low confidence
-      resources.sort((a, b) => b.confidence - a.confidence);
-      setExtractedResources(resources);
-      setShowResults(true);
+
+      // Poll for status
+      const pollStatus = async (uuid) => {
+        while (true) {
+          const res = await fetch(`http://localhost:8000/api/analyze-pdf-status/${uuid}`, {
+            headers: { "x-firebase-token": idToken },
+          });
+          const data = await res.json();
+          if (data.status === "done") {
+            const resourceMap = data.result.analysis.resources;
+            // Normalize resources to always be arrays
+            const ensureArray = (x) => Array.isArray(x) ? x : (x ? [x] : []);
+            const resources = [];
+            for (const art of ensureArray(resourceMap.articles)) {
+              resources.push({
+                id: art.id || art.url || art.title,
+                title: art.title,
+                type: "article",
+                url: art.url,
+                confidence: typeof art.confidence === "number" ? art.confidence : (typeof art.score === "number" ? art.score : 1.0),
+              });
+            }
+            for (const vid of ensureArray(resourceMap.videos)) {
+              resources.push({
+                id: vid.id || vid.url || vid.title,
+                title: vid.title,
+                type: "video",
+                url: vid.url,
+                confidence: typeof vid.confidence === "number" ? vid.confidence : (typeof vid.score === "number" ? vid.score : 1.0),
+              });
+            }
+            for (const course of ensureArray(resourceMap.courses)) {
+              resources.push({
+                id: course.id || course.url || course.title,
+                title: course.title,
+                type: "course",
+                url: course.url,
+                confidence: typeof course.confidence === "number" ? course.confidence : (typeof course.score === "number" ? course.score : 1.0),
+              });
+            }
+            resources.sort((a, b) => b.confidence - a.confidence);
+            setExtractedResources(resources);
+            setShowResults(true);
+            setIsAnalyzing(false);
+            break;
+          } else if (data.status === "failed" || data.status === "cancelled") {
+            alert(data.error || "Processing failed/cancelled");
+            setIsAnalyzing(false);
+            break;
+          }
+          await new Promise(r => setTimeout(r, 2000)); // poll every 2 seconds
+        }
+      };
+      pollStatus(newPdfUuid);
     } catch (err) {
       setIsAnalyzing(false);
       alert("Error analyzing PDF");
@@ -261,6 +287,7 @@ export function MainContent() {
     }
     setSelectedFile(null);
     setIsAnalyzing(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   return (
@@ -276,9 +303,17 @@ export function MainContent() {
           <div className="flex flex-col items-center">
             <div
               className="w-full max-w-md p-8 border-2 border-dashed border-muted-foreground/25 rounded-lg text-center mb-6 cursor-pointer hover:border-primary/50 transition-colors"
-              onClick={() => document.getElementById("pdf-upload").click()}
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
+              onClick={() => {
+                if (isAnalyzing) {
+                  setShowUploadConfirm(true);
+                  pendingUpload.current = () => document.getElementById("pdf-upload")?.click();
+                } else {
+                  document.getElementById("pdf-upload")?.click();
+                }
+              }}
+              onDrop={isAnalyzing ? undefined : handleDrop}
+              onDragOver={isAnalyzing ? undefined : handleDragOver}
+              style={{ opacity: isAnalyzing ? 0.5 : 1 }}
             >
               <input
                 id="pdf-upload"
@@ -302,16 +337,17 @@ export function MainContent() {
                       if (fileSelected && fileName) {
                         try {
                           const user = auth.currentUser;
-                          if (!user) throw new Error("User not authenticated");
-                          const idToken = await user.getIdToken();
-                          const res = await fetch("http://localhost:8000/api/delete_pdf", {
-                            method: "DELETE",
-                            headers: {
-                              "Content-Type": "application/json",
-                              "x-firebase-token": idToken,
-                            },
-                            body: JSON.stringify({ filename: fileName, uuid: pdfUuid }),
-                          });
+                          if (user) {
+                            const idToken = await user.getIdToken();
+                            const res = await fetch("http://localhost:8000/api/delete_pdf", {
+                              method: "DELETE",
+                              headers: {
+                                "Content-Type": "application/json",
+                                "x-firebase-token": idToken,
+                              },
+                              body: JSON.stringify({ filename: fileName, uuid: pdfUuid }),
+                            });
+                          }
                         } catch (err) {
                           alert(err);
                         }
@@ -432,6 +468,46 @@ export function MainContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Upload confirmation dialog */}
+      {showUploadConfirm && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
+          <div className="bg-white rounded-lg p-6 shadow-lg max-w-sm w-full">
+            <p className="mb-4">A PDF is currently being processed. Are you sure you want to upload a new PDF? This will stop the current process.</p>
+            <div className="flex justify-end gap-2">
+              <button className="px-4 py-2 rounded bg-gray-200" onClick={() => setShowUploadConfirm(false)}>Cancel</button>
+              <button className="px-4 py-2 rounded bg-red-500 text-white" onClick={async () => {
+                setShowUploadConfirm(false);
+                // Request backend to halt previous process if possible
+                if (pdfUuid) {
+                  try {
+                    const user = auth.currentUser;
+                    if (user) {
+                      const idToken = await user.getIdToken();
+                      await fetch("http://localhost:8000/api/halt_pdf_process", {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                          "x-firebase-token": idToken,
+                        },
+                        body: JSON.stringify({ uuid: pdfUuid }),
+                      });
+                    }
+                  } catch (e) {
+                    // Optionally log or ignore
+                  }
+                }
+                clearUploadState();
+                if (fileInputRef.current) fileInputRef.current.value = "";
+                if (pendingUpload.current) {
+                  pendingUpload.current();
+                  pendingUpload.current = null;
+                }
+              }}>Upload New PDF</button>
+            </div>
+          </div>
+        </div>
+      )}
     </SidebarInset>
   )
 }

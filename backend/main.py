@@ -16,6 +16,8 @@ import asyncio
 import re
 import firebase_admin
 from firebase_admin import credentials, auth as admin_auth
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 # Environment variables
 load_dotenv()
@@ -298,6 +300,87 @@ async def search_resources(topics: List[Dict]) -> Dict:
         }
 
 
+# --- PDF PROCESSING STATUS AND RESULTS ---
+from typing import Optional
+
+processing_status = {}  # uuid: {status: str, result: dict|None, error: str|None}
+
+@app.post("/api/analyze-pdf")
+async def analyze_pdf(request: Request, file: UploadFile):
+    form = await request.form()
+    uuid = form.get("uuid")
+    if not uuid:
+        raise HTTPException(status_code=400, detail="Missing UUID")
+
+    # Cancel any previous task for this UUID
+    if uuid in running_tasks:
+        running_tasks[uuid].cancel()
+        del running_tasks[uuid]
+    processing_status[uuid] = {"status": "processing", "result": None, "error": None}
+
+    # --- Read everything you need from the request before starting the background task ---
+    if not file.content_type == "application/pdf":
+        processing_status[uuid] = {"status": "failed", "result": None, "error": "Only PDF files are allowed"}
+        return {"success": False, "message": "Only PDF files are allowed"}
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        processing_status[uuid] = {"status": "failed", "result": None, "error": "File size must be less than 5MB"}
+        return {"success": False, "message": "File size must be less than 5MB"}
+    filename = file.filename
+    uid = await get_uid_from_request(request)
+
+    async def process_pdf_task():
+        try:
+            gcs_uri = await upload_to_gcs(content, filename, uid, uuid)
+            await asyncio.sleep(0)
+            try:
+                doc_result = await process_document_batch(gcs_uri)
+                await asyncio.sleep(0)
+            except Exception as e:
+                processing_status[uuid] = {"status": "failed", "result": None, "error": f"Error processing PDF: {str(e)}"}
+                return
+            try:
+                llm_analysis = await analyze_with_groq(doc_result["text"])
+                await asyncio.sleep(0)
+            except Exception as e:
+                llm_analysis = {"topics": [{"name": "Error analyzing text", "description": "Failed to process document", "keywords": ["error"]}]}
+            try:
+                resources = await search_resources(llm_analysis["topics"])
+                await asyncio.sleep(0)
+            except Exception as e:
+                resources = {"articles": [], "videos": [], "courses": [], "topics": ["Error searching resources"]}
+            processing_status[uuid] = {
+                "status": "done",
+                "result": {
+                    "filename": filename,
+                    "analysis": {
+                        "text": doc_result["text"],
+                        "pages": doc_result["pages"],
+                        "topics": llm_analysis["topics"],
+                        "resources": resources
+                    }
+                },
+                "error": None
+            }
+        except asyncio.CancelledError:
+            processing_status[uuid] = {"status": "cancelled", "result": None, "error": "Processing was cancelled."}
+            raise
+        except Exception as e:
+            processing_status[uuid] = {"status": "failed", "result": None, "error": str(e)}
+        finally:
+            running_tasks.pop(uuid, None)
+
+    task = asyncio.create_task(process_pdf_task())
+    running_tasks[uuid] = task
+    return {"success": True, "message": "PDF processing started."}
+
+@app.get("/api/analyze-pdf-status/{uuid}")
+async def analyze_pdf_status(uuid: str):
+    status = processing_status.get(uuid)
+    if not status:
+        return {"status": "not_found"}
+    return status
+
 @app.delete("/api/delete-pdf")
 async def delete_pdf(request: Request):
     data = await request.json()
@@ -318,96 +401,32 @@ async def delete_pdf(request: Request):
     else:
         raise HTTPException(status_code=404, detail="File not found in {uuid}/{filename}")
 
+class HaltRequest(BaseModel):
+    uuid: str
 
-@app.post("/api/analyze-pdf")
-async def analyze_pdf(request: Request, file: UploadFile):
-    try:
-        # Get UUID from request
-        form = await request.form()
-        uuid = form.get("uuid")
+# Dictionary to keep track of running tasks (for demonstration; in production use a proper task manager)
+running_tasks = {}
 
-        if not uuid:
-            raise HTTPException(status_code=400, detail="Missing UUID")
+@app.post("/api/halt_pdf_process")
+async def halt_pdf_process(request: Request):
+    data = await request.json()
+    uuid = data.get("uuid")
+    if not uuid:
+        raise HTTPException(status_code=400, detail="Missing UUID")
 
-        # Verify file type
-        if not file.content_type == "application/pdf":
-            return {
-                "success": False,
-                "message": "Only PDF files are allowed",
-                "error": "Please upload a PDF file"
-            }
-        
-        # Read file content
-        content = await file.read()
-        
-        # Verify file size
-        if len(content) > MAX_FILE_SIZE:
-            return {
-                "success": False,
-                "message": "File size must be less than 5MB",
-                "error": "Please upload a smaller file"
-            }
-        
-        # Upload to GCS
-        uid = await get_uid_from_request(request)
-        gcs_uri = await upload_to_gcs(content, file.filename, uid, uuid)
-        print(f"Uploaded file to: {gcs_uri}")
-        
-        # Process with Document AI batch
+    # Simulated process halting logic
+    # If you use asyncio tasks, celery, or subprocesses, you should implement actual cancellation here
+    task = running_tasks.get(uuid)
+    if task:
         try:
-            doc_result = await process_document_batch(gcs_uri)
+            task.cancel()
+            del running_tasks[uuid]
+            processing_status[uuid] = {"status": "cancelled", "result": None, "error": "Processing was cancelled."}
+            return JSONResponse({"success": True, "message": f"Process {uuid} halted."})
         except Exception as e:
-            return {
-                "success": False,
-                "message": "Error processing PDF",
-                "error": str(e)
-            }
-        
-        print(doc_result)
-        # Extract key information using Groq
-        try:
-            llm_analysis = await analyze_with_groq(doc_result["text"])
-        except Exception as e:
-            print(f"Groq Error: {str(e)}")
-            llm_analysis = {
-                "topics": [{
-                    "name": "Error analyzing text",
-                    "description": "Failed to process document",
-                    "keywords": ["error"]
-                }]
-            }
-        
-        # Search for relevant resources using Tavily
-        try:
-            resources = await search_resources(llm_analysis["topics"])
-        except Exception as e:
-            print(f"Tavily Error: {str(e)}")
-            resources = {
-                "articles": [],
-                "videos": [],
-                "courses": [],
-                "topics": ["Error searching resources"]
-            }
-        
-        return {
-            "success": True,
-            "message": "PDF processed successfully",
-            "filename": file.filename,
-            "analysis": {
-                "text": doc_result["text"],
-                "pages": doc_result["pages"],
-                "topics": llm_analysis["topics"],
-                "resources": resources
-            }
-        }
-        
-    except Exception as e:
-        print(f"Error in analyze_pdf: {repr(e)}")
-        return {
-            "success": False,
-            "message": "Error processing PDF",
-            "error": str(e)
-        }
+            return JSONResponse({"success": False, "message": f"Failed to halt process: {str(e)}"})
+    else:
+        return JSONResponse({"success": False, "message": "No running process found for this UUID."})
 
 @app.get("/api/health")
 async def health_check():
