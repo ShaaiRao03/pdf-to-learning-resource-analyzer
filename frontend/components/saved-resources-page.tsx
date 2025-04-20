@@ -226,9 +226,20 @@ export function SavedResourcesPage() {
     let filtered = selectedPdf.resources
     if (filterText.trim()) {
       const lower = filterText.trim().toLowerCase()
-      filtered = filtered.filter((r) =>
-        r.title.toLowerCase().includes(lower) || (r.type && r.type.toLowerCase().includes(lower)),
-      )
+      // Split filterText into possible type and text filters
+      const typeMatch = lower.match(/type:([a-z]+)/)
+      let typeFilter = null
+      let textFilter = lower
+      if (typeMatch) {
+        typeFilter = typeMatch[1]
+        // Remove 'type:...' from the search text
+        textFilter = lower.replace(typeMatch[0], '').trim()
+      }
+      filtered = filtered.filter((r) => {
+        const matchesType = typeFilter ? (r.type && r.type.toLowerCase() === typeFilter) : true
+        const matchesText = textFilter ? (r.title.toLowerCase().includes(textFilter) || (r.type && r.type.toLowerCase().includes(textFilter))) : true
+        return matchesType && matchesText
+      })
     }
     // If confidence exists, sort descending
     if (filtered.length && filtered[0].confidence !== undefined) {
@@ -307,7 +318,7 @@ export function SavedResourcesPage() {
           <div className="flex items-center gap-2 mb-2">
             <Input
               type="text"
-              placeholder="Filter resources..."
+              placeholder="Search resources (e.g. 'type:video python')"
               value={filterText}
               onChange={(e) => setFilterText(e.target.value)}
               className="max-w-xs"
