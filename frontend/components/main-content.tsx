@@ -284,12 +284,22 @@ export function MainContent() {
     try {
       const user = auth.currentUser;
       if (!user) throw new Error("User not authenticated");
+      if (!pdfUuid) throw new Error("No PDF UUID found");
+      if (!fileName) throw new Error("No PDF title found");
+      if (selectedResources.length === 0) throw new Error("No resources selected");
+      
       const db = getFirestore();
+      
+      // 1. Create/update the parent PDF document
+      const pdfDocRef = doc(db, "users", user.uid, "pdfs", pdfUuid);
+      await setDoc(pdfDocRef, { title: fileName, uuid: pdfUuid });
+      
+      // 2. Save each selected resource
       const batch = [];
       for (const resourceId of selectedResources) {
         const resource = extractedResources.find(r => r.id === resourceId);
         if (!resource) continue;
-        const resourceRef = doc(collection(db, "users", user.uid, "pdfs", pdfUuid || "", "resources"));
+        const resourceRef = doc(collection(db, "users", user.uid, "pdfs", pdfUuid, "resources"));
         batch.push(setDoc(resourceRef, resource));
       }
       await Promise.all(batch);
