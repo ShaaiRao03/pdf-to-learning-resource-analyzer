@@ -1,4 +1,5 @@
 from fastapi import FastAPI, UploadFile, HTTPException, Request, File, Header
+import logging
 from fastapi.middleware.cors import CORSMiddleware
 from google.cloud import documentai_v1 as documentai
 from google.cloud import storage
@@ -26,6 +27,10 @@ load_dotenv()
 if not firebase_admin._apps:
     cred = credentials.Certificate(r"C:\Users\User\Desktop\pdf-to-learning-resource-analyzer\backend\credentials\einstein-ai-prod-firebase-adminsdk-fbsvc-dd7d84d7e2.json")
     firebase_admin.initialize_app(cred)
+
+# Initialize logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+logger = logging.getLogger(__name__)
 
 # Initialize clients
 LOCATION = os.getenv('DOCUMENT_AI_LOCATION', 'us')
@@ -68,18 +73,21 @@ app.add_middleware(
 MAX_FILE_SIZE = 5 * 1024 * 1024
 
 # Helper to verify Firebase ID token and get UID
+import time
+import traceback
+
 async def get_uid_from_request(request: Request) -> str:
     id_token = request.headers.get("x-firebase-token")
-    print(f"[AUTH DEBUG] x-firebase-token header: {id_token[:30] + '...' if id_token else None}")
+    logger.debug(f"[AUTH DEBUG] x-firebase-token header: {id_token[:30] + '...' if id_token else None}")
     if not id_token:
-        print("[AUTH DEBUG] No ID token provided in request headers.")
+        logger.warning("[AUTH DEBUG] No ID token provided in request headers.")
         raise HTTPException(status_code=401, detail="Missing ID token")
     try:
         decoded_token = admin_auth.verify_id_token(id_token)
-        print(f"[AUTH DEBUG] Token decoded successfully. UID: {decoded_token.get('uid')}")
+        logger.info(f"[AUTH DEBUG] Token decoded successfully. UID: {decoded_token.get('uid')}")
         return decoded_token["uid"]
     except Exception as e:
-        print(f"[AUTH DEBUG] Token verification failed: {e}")
+        logger.error(f"[AUTH DEBUG] Token verification failed: {e}")
         raise HTTPException(status_code=401, detail="Invalid ID token")
 
 # Upload to GCS
@@ -169,7 +177,7 @@ async def process_document_batch(gcs_input_uri: str) -> dict:
         }
         
     except Exception as e:
-        print(f"Document AI Error: {str(e)}")
+        logger.error(f"Document AI Error: {str(e)}")
         raise Exception(f"Failed to process PDF: {str(e)}")
 
 # Extracts JSON block from LLM response
@@ -213,7 +221,7 @@ async def analyze_with_groq(text: str) -> Dict:
         return json.loads(cleaned_content)
 
     except Exception as e:
-        print(f"Groq Error: {e}")
+        logger.error(f"Groq Error: {e}")
         return {
             "topics": [{
                 "name": "Error analyzing text",
@@ -291,11 +299,11 @@ async def search_resources(topics: List[Dict]) -> Dict:
         for r in top_resources:
             grouped[classify_resource(r)].append(r)
         grouped["topics"] = [t["name"] for t in topics]
-        print(f"[RESOURCES] Grouped resources: {grouped}")
+        logger.info(f"[RESOURCES] Grouped resources: {grouped}")
         return grouped
                 
     except Exception as e:
-        print(f"Tavily Error: {str(e)}")
+        logger.error(f"Tavily Error: {str(e)}")
         return {
             "articles": [],
             "videos": [],
@@ -310,7 +318,10 @@ from typing import Optional
 processing_status = {}  # uuid: {status: str, result: dict|None, error: str|None}
 
 @app.post("/api/analyze-pdf")
+@app.post("/api/analyze-pdf")
 async def analyze_pdf(request: Request, file: UploadFile):
+    start_time = time.time()
+    logger.info(f"[ANALYZE_PDF] Request received: filename={file.filename if file else None}")
     form = await request.form()
     uuid = form.get("uuid")
     if not uuid:
@@ -320,40 +331,54 @@ async def analyze_pdf(request: Request, file: UploadFile):
     if uuid in running_tasks:
         running_tasks[uuid].cancel()
         del running_tasks[uuid]
+        logger.info(f"[ANALYZE_PDF] Previous task for uuid={uuid} cancelled.")
     processing_status[uuid] = {"status": "processing", "result": None, "error": None}
 
     if not file.content_type == "application/pdf":
-        processing_status[uuid] = {"status": "failed", "result": None, "error": "Only PDF files are allowed"}
-        return {"success": False, "message": "Only PDF files are allowed"}
+        logger.warning(f"[ANALYZE_PDF] Invalid file type: {file.content_type}")
+        raise HTTPException(status_code=400, detail="Invalid file type. Only PDF files are supported.")
+    
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
-        processing_status[uuid] = {"status": "failed", "result": None, "error": "File size must be less than 5MB"}
-        return {"success": False, "message": "File size must be less than 5MB"}
+        logger.warning(f"[ANALYZE_PDF] File too large by len(content): {len(content)}")
+        raise HTTPException(status_code=400, detail="File too large. Max size is 5MB.")
     filename = file.filename
     uid = await get_uid_from_request(request)
+    logger.info(f"[ANALYZE_PDF] User {uid} uploading file {filename} (size={len(content)})")
 
     async def process_pdf_task():
         try:
+            op_start = time.time()
             gcs_uri = await upload_to_gcs(content, filename, uid, uuid)
+            logger.info(f"[ANALYZE_PDF] Uploaded {filename} to GCS URI: {gcs_uri}")
             await asyncio.sleep(0)
             try:
+                doc_start = time.time()
                 doc_result = await process_document_batch(gcs_uri)
+                logger.debug(f"[PERF] Document batch processed in {time.time() - doc_start:.2f}s")
                 await asyncio.sleep(0)
             except Exception as e:
+                logger.error(f"[ERROR] Error processing PDF: {str(e)}\n{traceback.format_exc()}")
                 processing_status[uuid] = {"status": "failed", "result": None, "error": f"Error processing PDF: {str(e)}"}
                 return
             try:
+                llm_start = time.time()
                 llm_analysis = await analyze_with_groq(doc_result["text"])
+                logger.debug(f"[PERF] LLM analysis completed in {time.time() - llm_start:.2f}s")
                 await asyncio.sleep(0)
             except Exception as e:
+                logger.error(f"[ERROR] Error in LLM analysis: {str(e)}\n{traceback.format_exc()}")
                 llm_analysis = {"topics": [{"name": "Error analyzing text", "description": "Failed to process document", "keywords": ["error"]}]}
             try:
+                search_start = time.time()
                 resources = await search_resources(llm_analysis["topics"])
+                logger.debug(f"[PERF] Resource search completed in {time.time() - search_start:.2f}s")
                 await asyncio.sleep(0)
             except Exception as e:
+                logger.error(f"[ERROR] Error searching resources: {str(e)}\n{traceback.format_exc()}")
                 resources = {"articles": [], "videos": [], "courses": [], "topics": ["Error searching resources"]}
-            print(f"[PROCESSING] Extracted topics for {uuid}: {llm_analysis['topics']}")
-            print(f"[PROCESSING] Extracted resources for {uuid}: {resources}")
+            logger.info(f"[PROCESSING] Extracted topics for {uuid}: {llm_analysis['topics']}")
+            logger.info(f"[PROCESSING] Extracted resources for {uuid}: {resources}")
             result_dict = {
                 "filename": filename,
                 "analysis": {
@@ -363,52 +388,64 @@ async def analyze_pdf(request: Request, file: UploadFile):
                     "resources": resources
                 }
             }
-            print(f"[PROCESSING] Saving result for {uuid}: {result_dict}")
+            logger.info(f"[PROCESSING] Saving result for {uuid}: {result_dict}")
             processing_status[uuid] = {
                 "status": "done",
                 "result": result_dict,
                 "error": None
             }
+            logger.debug(f"[PERF] Total process_pdf_task time: {time.time() - op_start:.2f}s")
         except asyncio.CancelledError:
+            logger.warning(f"[ANALYZE_PDF] Processing for uuid={uuid} cancelled by user.")
             processing_status[uuid] = {"status": "cancelled", "result": None, "error": "Processing was cancelled."}
             raise
         except Exception as e:
+            logger.error(f"[ERROR] Unexpected error in process_pdf_task: {str(e)}\n{traceback.format_exc()}")
             processing_status[uuid] = {"status": "failed", "result": None, "error": str(e)}
         finally:
             running_tasks.pop(uuid, None)
 
     task = asyncio.create_task(process_pdf_task())
     running_tasks[uuid] = task
+    logger.info(f"[ANALYZE_PDF] PDF processing started for uuid={uuid}")
+    logger.debug(f"[PERF] analyze_pdf endpoint total time: {time.time() - start_time:.2f}s")
     return {"success": True, "message": "PDF processing started."}
 
 @app.get("/api/analyze-pdf-status/{uuid}")
 async def analyze_pdf_status(uuid: str):
     status = processing_status.get(uuid)
     if not status:
-        print(f"[STATUS] No status found for {uuid}")
+        logger.warning(f"[STATUS] No status found for {uuid}")
         return {"status": "not_found"}
-    print(f"[STATUS] Returning status for {uuid}: {status}")
+    logger.info(f"[STATUS] Returning status for {uuid}: {status}")
     return status
 
 @app.delete("/api/delete-pdf")
+@app.delete("/api/delete-pdf")
 async def delete_pdf(request: Request):
+    start_time = time.time()
+    logger.info("[DELETE] Delete PDF request received")
     data = await request.json()
     uuid = data.get("uuid")
     filename = data.get("filename")
-    print("filename: ",filename)
-    print("uuid: ",uuid)
+    logger.info(f"[DELETE] filename: {filename}")
+    logger.info(f"[DELETE] uuid: {uuid}")
     if not filename:
+        logger.warning("[DELETE] Missing filename in request")
         raise HTTPException(status_code=400, detail="Missing filename")
     if not uuid:
+        logger.warning("[DELETE] Missing UUID in request")
         raise HTTPException(status_code=400, detail="Missing UUID")
     blob_name_upload = f"{uuid}/{filename}"
     blob_upload = bucket.blob(blob_name_upload)
     if blob_upload.exists():
         blob_upload.delete()
-        print("PDF in cloud storage deleted successfully.")
+        logger.info(f"[DELETE] PDF {blob_name_upload} deleted from cloud storage by user action.")
+        logger.debug(f"[PERF] delete_pdf endpoint time: {time.time() - start_time:.2f}s")
         return {"status": "deleted"}
     else:
-        raise HTTPException(status_code=404, detail="File not found in {uuid}/{filename}")
+        logger.warning(f"[DELETE] File not found in storage: {blob_name_upload}")
+        raise HTTPException(status_code=404, detail=f"File not found in {uuid}/{filename}")
 
 class HaltRequest(BaseModel):
     uuid: str
@@ -417,10 +454,14 @@ class HaltRequest(BaseModel):
 running_tasks = {}
 
 @app.post("/api/halt_pdf_process")
+@app.post("/api/halt_pdf_process")
 async def halt_pdf_process(request: Request):
+    start_time = time.time()
+    logger.info("[HALT] Halt PDF process request received")
     data = await request.json()
     uuid = data.get("uuid")
     if not uuid:
+        logger.warning("[HALT] Missing UUID in halt request")
         raise HTTPException(status_code=400, detail="Missing UUID")
 
     # Simulated process halting logic
@@ -431,12 +472,18 @@ async def halt_pdf_process(request: Request):
             task.cancel()
             del running_tasks[uuid]
             processing_status[uuid] = {"status": "cancelled", "result": None, "error": "Processing was cancelled."}
+            logger.info(f"[HALT] Process {uuid} halted by user action.")
+            logger.debug(f"[PERF] halt_pdf_process endpoint time: {time.time() - start_time:.2f}s")
             return JSONResponse({"success": True, "message": f"Process {uuid} halted."})
         except Exception as e:
+            logger.error(f"[HALT] Failed to halt process {uuid}: {str(e)}\n{traceback.format_exc()}")
             return JSONResponse({"success": False, "message": f"Failed to halt process: {str(e)}"})
     else:
+        logger.warning(f"[HALT] No running process found for UUID: {uuid}")
         return JSONResponse({"success": False, "message": "No running process found for this UUID."})
 
 @app.get("/api/health")
+@app.get("/api/health")
 async def health_check():
+    logger.info("[HEALTH] Health check endpoint accessed.")
     return {"status": "healthy"}
