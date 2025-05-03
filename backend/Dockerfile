@@ -7,6 +7,12 @@ WORKDIR /app
 # Install system dependencies if needed
 RUN apt-get update && apt-get install -y gcc
 
+# Copy credentials  
+# COPY credentials /app/credentials
+
+# Copy the .env file into the container
+# COPY .env /app/.env
+
 # Copy requirements and install
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

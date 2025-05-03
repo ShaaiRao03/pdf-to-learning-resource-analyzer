@@ -24,7 +24,7 @@ load_dotenv()
 
 # Initialize Firebase Admin only once
 if not firebase_admin._apps:
-    cred = credentials.Certificate(r"C:\Users\User\Desktop\pdf-to-learning-resource-analyzer\backend\credentials\einstein-ai-prod-13811-firebase-adminsdk-fbsvc-e6e7596f60.json")
+    cred = credentials.Certificate(r"C:\Users\User\Desktop\pdf-to-learning-resource-analyzer\backend\credentials\einstein-ai-prod-firebase-adminsdk-fbsvc-dd7d84d7e2.json")
     firebase_admin.initialize_app(cred)
 
 # Initialize clients
@@ -70,13 +70,16 @@ MAX_FILE_SIZE = 5 * 1024 * 1024
 # Helper to verify Firebase ID token and get UID
 async def get_uid_from_request(request: Request) -> str:
     id_token = request.headers.get("x-firebase-token")
-
+    print(f"[AUTH DEBUG] x-firebase-token header: {id_token[:30] + '...' if id_token else None}")
     if not id_token:
+        print("[AUTH DEBUG] No ID token provided in request headers.")
         raise HTTPException(status_code=401, detail="Missing ID token")
     try:
         decoded_token = admin_auth.verify_id_token(id_token)
+        print(f"[AUTH DEBUG] Token decoded successfully. UID: {decoded_token.get('uid')}")
         return decoded_token["uid"]
-    except Exception:
+    except Exception as e:
+        print(f"[AUTH DEBUG] Token verification failed: {e}")
         raise HTTPException(status_code=401, detail="Invalid ID token")
 
 # Upload to GCS
@@ -288,6 +291,7 @@ async def search_resources(topics: List[Dict]) -> Dict:
         for r in top_resources:
             grouped[classify_resource(r)].append(r)
         grouped["topics"] = [t["name"] for t in topics]
+        print(f"[RESOURCES] Grouped resources: {grouped}")
         return grouped
                 
     except Exception as e:
@@ -318,7 +322,6 @@ async def analyze_pdf(request: Request, file: UploadFile):
         del running_tasks[uuid]
     processing_status[uuid] = {"status": "processing", "result": None, "error": None}
 
-    # --- Read everything you need from the request before starting the background task ---
     if not file.content_type == "application/pdf":
         processing_status[uuid] = {"status": "failed", "result": None, "error": "Only PDF files are allowed"}
         return {"success": False, "message": "Only PDF files are allowed"}
@@ -349,17 +352,21 @@ async def analyze_pdf(request: Request, file: UploadFile):
                 await asyncio.sleep(0)
             except Exception as e:
                 resources = {"articles": [], "videos": [], "courses": [], "topics": ["Error searching resources"]}
+            print(f"[PROCESSING] Extracted topics for {uuid}: {llm_analysis['topics']}")
+            print(f"[PROCESSING] Extracted resources for {uuid}: {resources}")
+            result_dict = {
+                "filename": filename,
+                "analysis": {
+                    "text": doc_result["text"],
+                    "pages": doc_result["pages"],
+                    "topics": llm_analysis["topics"],
+                    "resources": resources
+                }
+            }
+            print(f"[PROCESSING] Saving result for {uuid}: {result_dict}")
             processing_status[uuid] = {
                 "status": "done",
-                "result": {
-                    "filename": filename,
-                    "analysis": {
-                        "text": doc_result["text"],
-                        "pages": doc_result["pages"],
-                        "topics": llm_analysis["topics"],
-                        "resources": resources
-                    }
-                },
+                "result": result_dict,
                 "error": None
             }
         except asyncio.CancelledError:
@@ -378,7 +385,9 @@ async def analyze_pdf(request: Request, file: UploadFile):
 async def analyze_pdf_status(uuid: str):
     status = processing_status.get(uuid)
     if not status:
+        print(f"[STATUS] No status found for {uuid}")
         return {"status": "not_found"}
+    print(f"[STATUS] Returning status for {uuid}: {status}")
     return status
 
 @app.delete("/api/delete-pdf")
