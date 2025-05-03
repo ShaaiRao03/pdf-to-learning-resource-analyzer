@@ -318,7 +318,6 @@ from typing import Optional
 processing_status = {}  # uuid: {status: str, result: dict|None, error: str|None}
 
 @app.post("/api/analyze-pdf")
-@app.post("/api/analyze-pdf")
 async def analyze_pdf(request: Request, file: UploadFile):
     start_time = time.time()
     logger.info(f"[ANALYZE_PDF] Request received: filename={file.filename if file else None}")
@@ -421,7 +420,6 @@ async def analyze_pdf_status(uuid: str):
     return status
 
 @app.delete("/api/delete-pdf")
-@app.delete("/api/delete-pdf")
 async def delete_pdf(request: Request):
     start_time = time.time()
     logger.info("[DELETE] Delete PDF request received")
@@ -454,7 +452,6 @@ class HaltRequest(BaseModel):
 running_tasks = {}
 
 @app.post("/api/halt_pdf_process")
-@app.post("/api/halt_pdf_process")
 async def halt_pdf_process(request: Request):
     start_time = time.time()
     logger.info("[HALT] Halt PDF process request received")
@@ -482,7 +479,13 @@ async def halt_pdf_process(request: Request):
         logger.warning(f"[HALT] No running process found for UUID: {uuid}")
         return JSONResponse({"success": False, "message": "No running process found for this UUID."})
 
-@app.get("/api/health")
+@app.post("/api/log_user_action")
+async def log_user_action(request: Request):
+    print("IN LOG USER ACTION")
+    data = await request.json()
+    logger.info(f"[FRONTEND ACTION] {data}")
+    return {"success": True}
+
 @app.get("/api/health")
 async def health_check():
     logger.info("[HEALTH] Health check endpoint accessed.")
