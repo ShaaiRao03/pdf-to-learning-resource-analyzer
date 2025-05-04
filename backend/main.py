@@ -320,7 +320,7 @@ processing_status = {}  # uuid: {status: str, result: dict|None, error: str|None
 @app.post("/api/analyze-pdf")
 async def analyze_pdf(request: Request, file: UploadFile):
     start_time = time.time()
-    logger.info(f"[ANALYZE_PDF] Request received: filename={file.filename if file else None}")
+    logger.info(f"[ANALYZE PDF] Request received: filename={file.filename if file else None}")
     form = await request.form()
     uuid = form.get("uuid")
     if not uuid:

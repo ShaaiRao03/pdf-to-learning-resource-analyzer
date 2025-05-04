@@ -9,6 +9,7 @@ import { AlertCircle, Check } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { auth } from "@/lib/firebase"
 import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth"
+import { logUserAction } from "@/lib/logUserAction"
 
 export function AccountPage() {
   const [currentPassword, setCurrentPassword] = useState("")

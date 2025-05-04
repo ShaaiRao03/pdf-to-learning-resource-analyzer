@@ -337,7 +337,13 @@ toast({
 
   // Save selected resources
   const saveSelectedResources = async () => {
-    setSavingResources(true);
+  logFrontendAction({
+    actionType: 'SAVE RESOURCES',
+    component: 'MainContent',
+    level: 'info',
+    details: { pdfUuid, fileName, selectedCount: selectedResources.length }
+  });
+  setSavingResources(true);
     try {
       const user = auth.currentUser;
       if (!user) throw new Error("User not authenticated");
