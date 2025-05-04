@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import { auth } from "@/lib/firebase";
 import { getFirestore, collection, doc, getDocs, deleteDoc } from "firebase/firestore"
 import { getStorage, ref as storageRef, deleteObject } from "firebase/storage";
@@ -30,7 +31,8 @@ export function SavedResourcesPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [removeSelectedDialogOpen, setRemoveSelectedDialogOpen] = useState(false)
-  const [filterText, setFilterText] = useState("")
+  const [filterText, setFilterText] = useState("");
+  const [selectedType, setSelectedType] = useState<string>("__ALL__");
   const [finalDeleteDialogOpen, setFinalDeleteDialogOpen] = useState(false);
   const [pendingDeletePdfId, setPendingDeletePdfId] = useState(null);
   const [pendingDeletePdfStoragePath, setPendingDeletePdfStoragePath] = useState(null);
@@ -231,7 +233,7 @@ export function SavedResourcesPage() {
   // Select all resources button handler
   const handleSelectAllResources = () => {
     if (!selectedPdf) return;
-    setSelectedResources(selectedPdf.resources.map(r => r.id));
+    setSelectedResources(getFilteredResources().map(r => r.id));
   };
 
   // Deselect all resources button handler
@@ -239,32 +241,20 @@ export function SavedResourcesPage() {
     setSelectedResources([]);
   };
 
-  // Filter and sort resources by filterText and confidence
+  // Filter resources by selectedType and filterText (like main content page)
   const getFilteredResources = () => {
-    if (!selectedPdf) return []
-    let filtered = selectedPdf.resources
+    if (!selectedPdf) return [];
+    let filtered = selectedPdf.resources;
+    if (selectedType && selectedType !== "__ALL__") {
+      filtered = filtered.filter((r) => r.type === selectedType);
+    }
     if (filterText.trim()) {
-      const lower = filterText.trim().toLowerCase()
-      // Split filterText into possible type and text filters
-      const typeMatch = lower.match(/type:([a-z]+)/)
-      let typeFilter = null
-      let textFilter = lower
-      if (typeMatch) {
-        typeFilter = typeMatch[1]
-        // Remove 'type:...' from the search text
-        textFilter = lower.replace(typeMatch[0], '').trim()
-      }
-      filtered = filtered.filter((r) => {
-        const matchesType = typeFilter ? (r.type && r.type.toLowerCase() === typeFilter) : true
-        const matchesText = textFilter ? (r.title.toLowerCase().includes(textFilter) || (r.type && r.type.toLowerCase().includes(textFilter))) : true
-        return matchesType && matchesText
-      })
+      filtered = filtered.filter((r) =>
+        r.title.toLowerCase().includes(filterText.toLowerCase()) ||
+        (r.type && r.type.toLowerCase().includes(filterText.toLowerCase()))
+      );
     }
-    // If confidence exists, sort descending
-    if (filtered.length && filtered[0].confidence !== undefined) {
-      filtered = [...filtered].sort((a, b) => b.confidence - a.confidence)
-    }
-    return filtered
+    return filtered;
   }
 
   if (isLoading) {
@@ -337,11 +327,25 @@ export function SavedResourcesPage() {
           <div className="flex items-center gap-2 mb-2">
             <Input
               type="text"
-              placeholder="Search resources (e.g. 'type:video python')"
+              placeholder="Search by title..."
               value={filterText}
               onChange={(e) => setFilterText(e.target.value)}
               className="max-w-xs"
             />
+            {/* Type filter dropdown */}
+            {selectedPdf && (
+              <Select value={selectedType} onValueChange={setSelectedType}>
+                <SelectTrigger className="w-[140px] ml-2">
+                  <SelectValue placeholder="Filter by type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__ALL__">All Types</SelectItem>
+                  {Array.from(new Set(selectedPdf.resources.map(r => r.type).filter(Boolean))).map(type => (
+                    <SelectItem key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             {selectedPdf && selectedPdf.resources && selectedPdf.resources.length > 0 && (
               <>
                 <Button size="sm" variant="secondary" onClick={handleSelectAllResources}>
