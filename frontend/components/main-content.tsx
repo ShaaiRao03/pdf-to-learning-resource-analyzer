@@ -588,7 +588,7 @@ toast({
               <div className={`space-y-2${extractedResources.length > 5 ? ' max-h-80 overflow-y-auto pr-2' : ''}`}>
                 {extractedResources
   .filter(resource => resource.title.toLowerCase().includes(filterText.toLowerCase()))
-  .filter(resource => !selectedType || resource.type === selectedType)
+  .filter(resource => selectedType === "__ALL__" || resource.type === selectedType)
   .map((resource) => (
                   <div key={resource.id} className="flex items-start gap-3 p-3 border rounded-md">
                     <Checkbox

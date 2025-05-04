@@ -134,7 +134,7 @@ export function SavedResourcesPage() {
       }
       // Call backend API to delete PDF (send uuid and filename as JSON in DELETE body, include firebase token)
       try {
-        await fetch("https://einstein-ai-backend-218136169622.us-central1.run.app/api/delete-pdf", {
+        await fetch("http://localhost:8000/api/delete-pdf", {
           method: "DELETE",
           headers: {
             "Content-Type": "application/json",
