@@ -20,6 +20,7 @@ import { auth } from "@/lib/firebase";
 import { getFirestore, collection, doc, getDocs, deleteDoc } from "firebase/firestore"
 import { getStorage, ref as storageRef, deleteObject } from "firebase/storage";
 import { toast } from "@/hooks/use-toast";
+import { logFrontendAction } from "@/lib/logUserAction";
 
 export function SavedResourcesPage() {
   const [savedPdfs, setSavedPdfs] = useState([])
@@ -73,6 +74,12 @@ export function SavedResourcesPage() {
 
   // When user selects a resource, store its Firestore document id (resource.id)
   const toggleResourceSelection = (resourceId) => {
+  // logFrontendAction({
+  //   actionType: 'RESOURCE SELECTION',
+  //   component: 'SavedResourcesPage',
+  //   level: 'info',
+  //   details: { resourceId }
+  // });
     setSelectedResources((prev) =>
       prev.includes(resourceId) ? prev.filter((id) => id !== resourceId) : [...prev, resourceId],
     );
@@ -163,6 +170,12 @@ export function SavedResourcesPage() {
 
   // Delete selected resources from a PDF
   const handleDeleteSelectedResources = async () => {
+  logFrontendAction({
+    actionType: 'RESOURCE DELETE ATTEMPT',
+    component: 'SavedResourcesPage',
+    level: 'info',
+    details: { selectedResources }
+  });
     if (!selectedPdf || selectedResources.length === 0) return;
     const total = selectedPdf.resources.length;
     const sel = selectedResources.length;
@@ -185,24 +198,42 @@ export function SavedResourcesPage() {
       // Use the Firestore document id (resource.firestoreId) for deletion
       const resourcesToDelete = selectedPdf.resources.filter(r => selectedResources.includes(r.id));
       for (const resource of resourcesToDelete) {
+  // logFrontendAction({
+  //   actionType: 'RESOURCE DELETE ATTEMPT',
+  //   component: 'SavedResourcesPage',
+  //   level: 'info',
+  //   details: { resourceId: resource.id }
+  // });
         const firestoreId = resource.firestoreId || resource.id;
         await deleteDoc(doc(db, "users", user.uid, "pdfs", selectedPdf.id, "resources", firestoreId));
       }
       setSavedPdfs((pdfs) => pdfs.map((pdf) =>
-        pdf.id === selectedPdf.id
-          ? { ...pdf, resources: pdf.resources.filter((r) => !selectedResources.includes(r.id)) }
-          : pdf
-      ));
+  pdf.id === selectedPdf.id
+    ? { ...pdf, resources: pdf.resources.filter((r) => !selectedResources.includes(r.id)) }
+    : pdf
+));
+logFrontendAction({
+  actionType: 'RESOURCE DELETE SUCCESS',
+  component: 'SavedResourcesPage',
+  level: 'info',
+  details: { deleted: selectedResources }
+});
       const remainingResources = selectedPdf.resources.filter((r) => !selectedResources.includes(r.id));
       setSelectedPdf((prev) => prev ? { ...prev, resources: remainingResources } : prev);
       setDialogOpen(true);
       setSelectedResources([]);
     } catch (err) {
       toast({
-        title: "Error",
-        description: "Failed to delete resources: " + (err && typeof err === 'object' && 'message' in err ? err.message : String(err)),
-        variant: "destructive"
-      });
+  title: "Error",
+  description: "Failed to delete resources: " + (err && typeof err === 'object' && 'message' in err ? err.message : String(err)),
+  variant: "destructive"
+});
+logFrontendAction({
+  actionType: 'RESOURCE DELETE FAILURE',
+  component: 'SavedResourcesPage',
+  level: 'error',
+  details: { error: err?.message, selectedResources }
+});
     } finally {
       setIsDeletingResources(false);
       setRemoveSelectedDialogOpen(false);

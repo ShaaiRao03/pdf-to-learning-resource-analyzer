@@ -21,6 +21,7 @@ import { auth } from "@/lib/firebase";
 import { v4 as uuidv4 } from 'uuid';
 import { getFirestore, doc, setDoc, collection } from "firebase/firestore";
 import { useAuth } from "@/components/auth-provider";
+import { logFrontendAction } from "@/lib/logUserAction";
 import { toast } from "@/hooks/use-toast";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -86,6 +87,12 @@ export function MainContent() {
 
   // Handle file selection
   const handleFileSelect = (e) => {
+  logFrontendAction({
+    actionType: 'PDF FILE SELECTION',
+    component: 'MainContent',
+    level: 'info',
+    details: { eventType: 'input', time: new Date().toISOString() }
+  });
     const file = e.target.files?.[0];
     if (!file) {
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -116,13 +123,25 @@ export function MainContent() {
       return;
     }
     setFileSelected(true);
-    setSelectedFile(file);
-    setPdfUuid(null);
+setSelectedFile(file);
+setPdfUuid(null);
+logFrontendAction({
+  actionType: 'PDF SELECTED',
+  component: 'MainContent',
+  level: 'info',
+  details: { fileName: file.name, fileSize: file.size }
+});
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   // Handle drag and drop
   const handleDrop = (e) => {
+  logFrontendAction({
+    actionType: 'PDF FILE SELECTION',
+    component: 'MainContent',
+    level: 'info',
+    details: { eventType: 'drop', time: new Date().toISOString() }
+  });
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
     if (!file) {
@@ -164,10 +183,22 @@ export function MainContent() {
 
   // Analyze PDF (calls backend)
   const analyzePDF = async () => {
+  logFrontendAction({
+    actionType: 'PDF UPLOAD ATTEMPT',
+    component: 'MainContent',
+    level: 'info',
+    details: { fileName: selectedFile?.name, fileSize: selectedFile?.size }
+  });
     if (!selectedFile) return;
     setIsAnalyzing(true);
-    setShowResults(false);
-    setExtractedResources([]);
+setShowResults(false);
+setExtractedResources([]);
+logFrontendAction({
+  actionType: 'ANALYSIS START',
+  component: 'MainContent',
+  level: 'info',
+  details: { fileName: selectedFile?.name, fileSize: selectedFile?.size }
+});
     try {
       const user = auth.currentUser;
       if (!user) throw new Error("User not authenticated");
@@ -233,18 +264,30 @@ export function MainContent() {
             }
             resources.sort((a, b) => b.confidence - a.confidence);
             setExtractedResources(resources);
-            setShowResults(true);
-            setIsAnalyzing(false);
-            break;
+setShowResults(true);
+setIsAnalyzing(false);
+logFrontendAction({
+  actionType: 'ANALYSIS SUCCESS',
+  component: 'MainContent',
+  level: 'info',
+  details: { fileName: selectedFile?.name, resourceCount: resources.length }
+});
+break;
           } else if (data.status === "failed" || data.status === "cancelled") {
             toast({
-              title: "Processing Status",
-              description: data.error || "Processing failed/cancelled",
-              variant: "destructive",
-              duration: 3000
-            });
-            setIsAnalyzing(false);
-            break;
+  title: "Processing Status",
+  description: data.error || "Processing failed/cancelled",
+  variant: "destructive",
+  duration: 3000
+});
+logFrontendAction({
+  actionType: 'ANALYSIS FAILURE',
+  component: 'MainContent',
+  level: 'error',
+  details: { fileName: selectedFile?.name, error: data.error }
+});
+setIsAnalyzing(false);
+break;
           }
           await new Promise(r => setTimeout(r, 2000)); // poll every 2 seconds
         }
@@ -252,12 +295,18 @@ export function MainContent() {
       pollStatus(newPdfUuid);
     } catch (err) {
       setIsAnalyzing(false);
-      toast({
-        title: "Error",
-        description: "Error analyzing PDF",
-        variant: "destructive",
-        duration: 3000
-      });
+logFrontendAction({
+  actionType: 'ANALYSIS FAILURE',
+  component: 'MainContent',
+  level: 'error',
+  details: { fileName: selectedFile?.name, error: err?.message }
+});
+toast({
+  title: "Error",
+  description: "Error analyzing PDF",
+  variant: "destructive",
+  duration: 3000
+});
     }
   };
 

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/sidebar"
 import { signOut } from "firebase/auth"
 import { auth } from "@/lib/firebase"
+import { logFrontendAction } from "@/lib/logUserAction"
 
 export function AppSidebar() {
   const pathname = usePathname()
@@ -42,10 +43,31 @@ export function AppSidebar() {
   ]
 
   const handleLogout = async () => {
+  logFrontendAction({
+    actionType: 'LOGOUT ATTEMPT',
+    component: 'AppSidebar',
+    level: 'info',
+    details: { time: new Date().toISOString() }
+  });
     // Show a confirmation dialog
     if (window.confirm("Are you sure you want to log out?")) {
-      await signOut(auth);
-      router.replace("/login");
+      try {
+  await signOut(auth);
+  logFrontendAction({
+    actionType: 'LOGOUT SUCCESS',
+    component: 'AppSidebar',
+    level: 'info',
+    details: { time: new Date().toISOString() }
+  });
+  router.replace("/login");
+} catch (err) {
+  logFrontendAction({
+    actionType: 'LOGOUT FAILURE',
+    component: 'AppSidebar',
+    level: 'error',
+    details: { error: err?.message, time: new Date().toISOString() }
+  });
+}
     }
   };
 
