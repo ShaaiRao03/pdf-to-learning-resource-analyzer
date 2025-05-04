@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { logUserAction } from "@/lib/logUserAction";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -18,11 +19,26 @@ export default function ForgotPasswordPage() {
     setMessage("");
     setError("");
     setLoading(true);
+    logUserAction({
+      action: "Password Reset Attempt",
+      component: "ForgotPasswordPage",
+      details: { email }
+    });
     try {
       await sendPasswordResetEmail(auth, email);
       setMessage("Password reset email sent! Please check your inbox.");
+      logUserAction({
+        action: "Password Reset Success",
+        component: "ForgotPasswordPage",
+        details: { email }
+      });
     } catch (err: any) {
       setError(err.message || "Failed to send reset email.");
+      logUserAction({
+        action: "Password Reset Failure",
+        component: "ForgotPasswordPage",
+        details: { email, error: err.message }
+      });
     } finally {
       setLoading(false);
     }

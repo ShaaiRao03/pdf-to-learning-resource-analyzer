@@ -29,8 +29,13 @@ export function AccountPage() {
     setIsSubmitting(true)
     setError("")
     setSuccess(false)
+    const user = auth.currentUser;
+    logUserAction({
+      action: "Account Update Attempt",
+      component: "AccountPage",
+      details: { email: user?.email }
+    });
     try {
-      const user = auth.currentUser;
       if (!user || !user.email) throw new Error("Not authenticated");
       // Re-authenticate
       const credential = EmailAuthProvider.credential(user.email, currentPassword);
@@ -41,6 +46,11 @@ export function AccountPage() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
+      logUserAction({
+        action: "Account Update Success",
+        component: "AccountPage",
+        details: { email: user.email }
+      });
     } catch (err) {
       let msg = err.message || "Failed to update password";
       // Firebase returns this for wrong password
@@ -48,6 +58,11 @@ export function AccountPage() {
         msg = "Your current password is incorrect";
       }
       setError(msg);
+      logUserAction({
+        action: "Account Update Failure",
+        component: "AccountPage",
+        details: { email: user?.email, error: msg }
+      });
     } finally {
       setIsSubmitting(false)
     }

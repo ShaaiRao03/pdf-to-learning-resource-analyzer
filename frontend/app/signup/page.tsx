@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { logUserAction } from "@/lib/logUserAction"
 
 export default function SignUpPage() {
   const [email, setEmail] = useState("");
@@ -24,13 +25,28 @@ export default function SignUpPage() {
     setError("");
     if (password !== confirmPassword) {
       setError("Passwords do not match");
+      logUserAction({
+        action: "Signup Failure",
+        component: "SignUpPage",
+        details: { email, name, error: "Passwords do not match" }
+      });
       return;
     }
     if (!name.trim()) {
       setError("Name is required");
+      logUserAction({
+        action: "Signup Failure",
+        component: "SignUpPage",
+        details: { email, error: "Name is required" }
+      });
       return;
     }
     setLoading(true);
+    logUserAction({
+      action: "Signup Attempt",
+      component: "SignUpPage",
+      details: { email, name }
+    });
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       // Create user in Firestore with name
@@ -39,9 +55,19 @@ export default function SignUpPage() {
         email: userCredential.user.email || "",
         name: name.trim(),
       });
+      logUserAction({
+        action: "Signup Success",
+        component: "SignUpPage",
+        details: { email, name }
+      });
       router.replace("/login");
     } catch (err: any) {
       setError(err.message || "Failed to sign up");
+      logUserAction({
+        action: "Signup Failure",
+        component: "SignUpPage",
+        details: { email, name, error: err.message }
+      });
     } finally {
       setLoading(false);
     }

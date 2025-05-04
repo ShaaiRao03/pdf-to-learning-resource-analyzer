@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { logUserAction } from "@/lib/logUserAction"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -20,11 +21,26 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
     setLoading(true);
+    logUserAction({
+      action: "Login Attempt",
+      component: "LoginPage",
+      details: { email }
+    });
     try {
       await signInWithEmailAndPassword(auth, email, password);
+      logUserAction({
+        action: "Login Success",
+        component: "LoginPage",
+        details: { email }
+      });
       router.replace("/");
     } catch (err: any) {
       setError("Invalid email or password");
+      logUserAction({
+        action: "Login Failure",
+        component: "LoginPage",
+        details: { email, error: err.message }
+      });
     } finally {
       setLoading(false);
     }

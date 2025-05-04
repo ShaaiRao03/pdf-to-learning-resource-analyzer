@@ -481,7 +481,6 @@ async def halt_pdf_process(request: Request):
 
 @app.post("/api/log_user_action")
 async def log_user_action(request: Request):
-    print("IN LOG USER ACTION")
     data = await request.json()
     logger.info(f"[FRONTEND ACTION] {data}")
     return {"success": True}
