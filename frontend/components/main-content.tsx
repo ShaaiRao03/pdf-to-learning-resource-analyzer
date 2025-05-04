@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"; 
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"; 
 import { auth } from "@/lib/firebase";
 import { v4 as uuidv4 } from 'uuid';
 import { getFirestore, doc, setDoc, collection } from "firebase/firestore";
@@ -54,7 +55,8 @@ export function MainContent() {
   const [extractedResources, setExtractedResources] = useState<ExtractedResource[]>([])
   const [selectedResources, setSelectedResources] = useState<string[]>([])
   const [savingResources, setSavingResources] = useState(false);
-  const [filterText, setFilterText] = useState(""); 
+  const [filterText, setFilterText] = useState("");
+  const [selectedType, setSelectedType] = useState<string>("__ALL__");
   const [showUploadConfirm, setShowUploadConfirm] = useState(false);
   const [haltingProcessing, setHaltingProcessing] = useState(false);
   const pendingUpload = useRef<null | (() => void)>(null);
@@ -554,11 +556,22 @@ toast({
               <div className="flex items-center gap-2 mb-2">
                 <Input
                   type="text"
-                  placeholder="Filter resources..."
+                  placeholder="Search by title..."
                   value={filterText}
                   onChange={(e) => setFilterText(e.target.value)}
                   className="max-w-xs"
                 />
+                <Select value={selectedType} onValueChange={setSelectedType}>
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue placeholder="Filter by type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__ALL__">All Types</SelectItem>
+                    {Array.from(new Set(extractedResources.map(r => r.type).filter(Boolean))).map(type => (
+                      <SelectItem key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 {extractedResources && extractedResources.length > 0 && (
                   <>
                     <Button size="sm" variant="secondary" onClick={handleSelectAllResources}>
@@ -573,7 +586,10 @@ toast({
 
               {/* Scrollable resource list if more than 5 */}
               <div className={`space-y-2${extractedResources.length > 5 ? ' max-h-80 overflow-y-auto pr-2' : ''}`}>
-                {extractedResources.filter(resource => resource.title.toLowerCase().includes(filterText.toLowerCase())).map((resource) => (
+                {extractedResources
+  .filter(resource => resource.title.toLowerCase().includes(filterText.toLowerCase()))
+  .filter(resource => !selectedType || resource.type === selectedType)
+  .map((resource) => (
                   <div key={resource.id} className="flex items-start gap-3 p-3 border rounded-md">
                     <Checkbox
                       id={`resource-${resource.id}`}
