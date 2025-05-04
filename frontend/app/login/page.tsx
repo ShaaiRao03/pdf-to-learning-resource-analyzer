@@ -53,6 +53,14 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
+          <div className="flex justify-center mb-2">
+            <img
+              src="/EinsteinAI.png"
+              alt="EinsteinAI Logo"
+              className="h-20 w-20 rounded-lg border-2 border-gray-200 object-cover bg-white"
+              //style={{ boxShadow: '0 4px 24px rgba(0,0,0,0.12)' }}
+            />
+          </div>
           <CardTitle className="text-2xl font-bold text-center">Log in</CardTitle>
           <CardDescription className="text-center">Enter your credentials to access your account</CardDescription>
         </CardHeader>
