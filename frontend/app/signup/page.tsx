@@ -26,7 +26,7 @@ export default function SignUpPage() {
     if (password !== confirmPassword) {
       setError("Passwords do not match");
       logUserAction({
-        action: "Signup Failure",
+        action: "[FRONTEND ACTION] [SIGNUP FAILURE]",
         component: "SignUpPage",
         details: { email, name, error: "Passwords do not match" }
       });
@@ -35,7 +35,7 @@ export default function SignUpPage() {
     if (!name.trim()) {
       setError("Name is required");
       logUserAction({
-        action: "Signup Failure",
+        action: "[FRONTEND ACTION] [SIGNUP FAILURE]",
         component: "SignUpPage",
         details: { email, error: "Name is required" }
       });
@@ -43,7 +43,8 @@ export default function SignUpPage() {
     }
     setLoading(true);
     logUserAction({
-      action: "Signup Attempt",
+      action: "[FRONTEND ACTION] [SIGNUP ATTEMPT]",
+      level: "info",
       component: "SignUpPage",
       details: { email, name }
     });
@@ -56,7 +57,8 @@ export default function SignUpPage() {
         name: name.trim(),
       });
       logUserAction({
-        action: "Signup Success",
+        action: "[FRONTEND ACTION] [SIGNUP SUCCESS]",
+        level: "info",
         component: "SignUpPage",
         details: { email, name }
       });
@@ -64,7 +66,7 @@ export default function SignUpPage() {
     } catch (err: any) {
       setError(err.message || "Failed to sign up");
       logUserAction({
-        action: "Signup Failure",
+        action: "[FRONTEND ACTION] [SIGNUP FAILURE]",
         component: "SignUpPage",
         details: { email, name, error: err.message }
       });

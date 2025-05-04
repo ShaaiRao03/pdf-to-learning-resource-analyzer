@@ -31,7 +31,8 @@ export function AccountPage() {
     setSuccess(false)
     const user = auth.currentUser;
     logUserAction({
-      action: "Account Update Attempt",
+      action: "[FRONTEND ACTION] [ACCOUNT UPDATE ATTEMPT]",
+      level: "info",
       component: "AccountPage",
       details: { email: user?.email }
     });
@@ -47,7 +48,8 @@ export function AccountPage() {
       setNewPassword("");
       setConfirmPassword("");
       logUserAction({
-        action: "Account Update Success",
+        action: "[FRONTEND ACTION] [ACCOUNT UPDATE SUCCESS]",
+        level: "info",
         component: "AccountPage",
         details: { email: user.email }
       });
@@ -59,7 +61,8 @@ export function AccountPage() {
       }
       setError(msg);
       logUserAction({
-        action: "Account Update Failure",
+        action: "[FRONTEND ACTION] [ACCOUNT UPDATE FAILURE]",
+        level: "error",
         component: "AccountPage",
         details: { email: user?.email, error: msg }
       });

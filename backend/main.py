@@ -482,7 +482,19 @@ async def halt_pdf_process(request: Request):
 @app.post("/api/log_user_action")
 async def log_user_action(request: Request):
     data = await request.json()
-    logger.info(f"[FRONTEND ACTION] {data}")
+    level = (data.get('level') or 'info').lower()
+    action = data.pop('action', 'UNKNOWN ACTION') 
+    msg = f"{action} {data}" 
+    if level == 'alert':
+        logger.critical(msg)
+    elif level == 'error':
+        logger.error(msg)
+    elif level == 'warning':
+        logger.warning(msg)
+    elif level == 'debug':
+        logger.debug(msg)
+    else:
+        logger.info(msg)
     return {"success": True}
 
 @app.get("/api/health")

@@ -20,7 +20,8 @@ export default function ForgotPasswordPage() {
     setError("");
     setLoading(true);
     logUserAction({
-      action: "Password Reset Attempt",
+      action: "[FRONTEND ACTION] [PASSWORD RESET ATTEMPT]",
+      level: "info",
       component: "ForgotPasswordPage",
       details: { email }
     });
@@ -28,14 +29,16 @@ export default function ForgotPasswordPage() {
       await sendPasswordResetEmail(auth, email);
       setMessage("Password reset email sent! Please check your inbox.");
       logUserAction({
-        action: "Password Reset Success",
+        action: "[FRONTEND ACTION] [PASSWORD RESET SUCCESS]",
+        level: "info",
         component: "ForgotPasswordPage",
         details: { email }
       });
     } catch (err: any) {
       setError(err.message || "Failed to send reset email.");
       logUserAction({
-        action: "Password Reset Failure",
+        action: "[FRONTEND ACTION] [PASSWORD RESET FAILURE]",
+        level: "error",
         component: "ForgotPasswordPage",
         details: { email, error: err.message }
       });

@@ -22,14 +22,16 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     logUserAction({
-      action: "Login Attempt",
+      action: "[FRONTEND ACTION] [LOGIN ATTEMPT]",
+      level: "info",
       component: "LoginPage",
       details: { email }
     });
     try {
       await signInWithEmailAndPassword(auth, email, password);
       logUserAction({
-        action: "Login Success",
+        action: "[FRONTEND ACTION] [LOGIN SUCCESS]",
+        level: "info",
         component: "LoginPage",
         details: { email }
       });
@@ -37,7 +39,8 @@ export default function LoginPage() {
     } catch (err: any) {
       setError("Invalid email or password");
       logUserAction({
-        action: "Login Failure",
+        action: "[FRONTEND ACTION] [LOGIN FAILURE]",
+        level: "error",
         component: "LoginPage",
         details: { email, error: err.message }
       });
