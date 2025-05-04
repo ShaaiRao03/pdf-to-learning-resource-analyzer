@@ -78,16 +78,16 @@ import traceback
 
 async def get_uid_from_request(request: Request) -> str:
     id_token = request.headers.get("x-firebase-token")
-    logger.debug(f"[AUTH DEBUG] x-firebase-token header: {id_token[:30] + '...' if id_token else None}")
+    logger.info(f"[AUTH] x-firebase-token header: {id_token[:30] + '...' if id_token else None}")
     if not id_token:
-        logger.warning("[AUTH DEBUG] No ID token provided in request headers.")
+        logger.warning("[AUTH] No ID token provided in request headers.")
         raise HTTPException(status_code=401, detail="Missing ID token")
     try:
         decoded_token = admin_auth.verify_id_token(id_token)
-        logger.info(f"[AUTH DEBUG] Token decoded successfully. UID: {decoded_token.get('uid')}")
+        logger.info(f"[AUTH] Token decoded successfully. UID: {decoded_token.get('uid')}")
         return decoded_token["uid"]
     except Exception as e:
-        logger.error(f"[AUTH DEBUG] Token verification failed: {e}")
+        logger.error(f"[AUTH] Token verification failed: {e}")
         raise HTTPException(status_code=401, detail="Invalid ID token")
 
 # Upload to GCS
@@ -128,13 +128,13 @@ async def process_document_batch(gcs_input_uri: str) -> dict:
         
         # Start batch process
         operation = document_ai_client.batch_process_documents(request)
-        print(f"Started batch process operation: {operation.operation.name}")
+        logger.info(f"Started batch process operation: {operation.operation.name}")
         
         # Wait for completion with timeout
         try:
             operation.result(timeout=120)  # 2 minute timeout
         except Exception as e:
-            print(f"Batch process error: {str(e)}")
+            logger.error(f"Batch process error: {str(e)}")
             raise Exception("Document processing timed out")
         
         # Get metadata
@@ -159,7 +159,7 @@ async def process_document_batch(gcs_input_uri: str) -> dict:
         
         for blob in output_blobs:
             if ".json" in blob.name:
-                print(f"Processing output file: {blob.name}")
+                logger.info(f"Processing output file: {blob.name}")
                 document = documentai.Document.from_json(
                     blob.download_as_bytes(),
                     ignore_unknown_fields=True
@@ -281,7 +281,7 @@ async def search_resources(topics: List[Dict]) -> Dict:
         # Take top 10 most relevant resources
         top_resources = filtered_resources[:10]
 
-        print("top_resources: ",top_resources)
+        logger.info("top_resources: ",top_resources)
 
         # Improved classification logic
         def classify_resource(r):
@@ -330,31 +330,31 @@ async def analyze_pdf(request: Request, file: UploadFile):
     if uuid in running_tasks:
         running_tasks[uuid].cancel()
         del running_tasks[uuid]
-        logger.info(f"[ANALYZE_PDF] Previous task for uuid={uuid} cancelled.")
+        logger.info(f"[ANALYZE PDF] Previous task for uuid={uuid} cancelled.")
     processing_status[uuid] = {"status": "processing", "result": None, "error": None}
 
     if not file.content_type == "application/pdf":
-        logger.warning(f"[ANALYZE_PDF] Invalid file type: {file.content_type}")
+        logger.warning(f"[ANALYZE PDF] Invalid file type: {file.content_type}")
         raise HTTPException(status_code=400, detail="Invalid file type. Only PDF files are supported.")
     
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
-        logger.warning(f"[ANALYZE_PDF] File too large by len(content): {len(content)}")
+        logger.warning(f"[ANALYZE PDF] File too large by len(content): {len(content)}")
         raise HTTPException(status_code=400, detail="File too large. Max size is 5MB.")
     filename = file.filename
     uid = await get_uid_from_request(request)
-    logger.info(f"[ANALYZE_PDF] User {uid} uploading file {filename} (size={len(content)})")
+    logger.info(f"[ANALYZE PDF] User {uid} uploading file {filename} (size={len(content)})")
 
     async def process_pdf_task():
         try:
             op_start = time.time()
             gcs_uri = await upload_to_gcs(content, filename, uid, uuid)
-            logger.info(f"[ANALYZE_PDF] Uploaded {filename} to GCS URI: {gcs_uri}")
+            logger.info(f"[ANALYZE PDF] Uploaded {filename} to GCS URI: {gcs_uri}")
             await asyncio.sleep(0)
             try:
                 doc_start = time.time()
                 doc_result = await process_document_batch(gcs_uri)
-                logger.debug(f"[PERF] Document batch processed in {time.time() - doc_start:.2f}s")
+                logger.info(f"[PERF] Document batch processed in {time.time() - doc_start:.2f}s")
                 await asyncio.sleep(0)
             except Exception as e:
                 logger.error(f"[ERROR] Error processing PDF: {str(e)}\n{traceback.format_exc()}")
@@ -363,7 +363,7 @@ async def analyze_pdf(request: Request, file: UploadFile):
             try:
                 llm_start = time.time()
                 llm_analysis = await analyze_with_groq(doc_result["text"])
-                logger.debug(f"[PERF] LLM analysis completed in {time.time() - llm_start:.2f}s")
+                logger.info(f"[PERF] LLM analysis completed in {time.time() - llm_start:.2f}s")
                 await asyncio.sleep(0)
             except Exception as e:
                 logger.error(f"[ERROR] Error in LLM analysis: {str(e)}\n{traceback.format_exc()}")
@@ -371,7 +371,7 @@ async def analyze_pdf(request: Request, file: UploadFile):
             try:
                 search_start = time.time()
                 resources = await search_resources(llm_analysis["topics"])
-                logger.debug(f"[PERF] Resource search completed in {time.time() - search_start:.2f}s")
+                logger.info(f"[PERF] Resource search completed in {time.time() - search_start:.2f}s")
                 await asyncio.sleep(0)
             except Exception as e:
                 logger.error(f"[ERROR] Error searching resources: {str(e)}\n{traceback.format_exc()}")
@@ -393,9 +393,20 @@ async def analyze_pdf(request: Request, file: UploadFile):
                 "result": result_dict,
                 "error": None
             }
-            logger.debug(f"[PERF] Total process_pdf_task time: {time.time() - op_start:.2f}s")
+            logger.info(f"[PERF] Total process_pdf_task time: {time.time() - op_start:.2f}s")
         except asyncio.CancelledError:
-            logger.warning(f"[ANALYZE_PDF] Processing for uuid={uuid} cancelled by user.")
+            logger.warning(f"[ANALYZE PDF] Processing for uuid={uuid} cancelled by user.")
+            # Attempt to delete the uploaded PDF from GCS on cancellation
+            try:
+                blob_name_upload = f"{uuid}/{filename}"
+                blob_upload = bucket.blob(blob_name_upload)
+                if blob_upload.exists():
+                    blob_upload.delete()
+                    logger.info(f"[CLEANUP] PDF {blob_name_upload} deleted from cloud storage after halt/cancel.")
+                else:
+                    logger.warning(f"[CLEANUP] No PDF found in storage to delete for {blob_name_upload} after halt/cancel.")
+            except Exception as e:
+                logger.error(f"[CLEANUP] Failed to delete PDF {uuid}/{filename} after halt/cancel: {str(e)}")
             processing_status[uuid] = {"status": "cancelled", "result": None, "error": "Processing was cancelled."}
             raise
         except Exception as e:
@@ -406,8 +417,8 @@ async def analyze_pdf(request: Request, file: UploadFile):
 
     task = asyncio.create_task(process_pdf_task())
     running_tasks[uuid] = task
-    logger.info(f"[ANALYZE_PDF] PDF processing started for uuid={uuid}")
-    logger.debug(f"[PERF] analyze_pdf endpoint total time: {time.time() - start_time:.2f}s")
+    logger.info(f"[ANALYZE PDF] PDF processing started for uuid={uuid}")
+    logger.info(f"[PERF] analyze_pdf endpoint total time: {time.time() - start_time:.2f}s")
     return {"success": True, "message": "PDF processing started."}
 
 @app.get("/api/analyze-pdf-status/{uuid}")
@@ -439,7 +450,7 @@ async def delete_pdf(request: Request):
     if blob_upload.exists():
         blob_upload.delete()
         logger.info(f"[DELETE] PDF {blob_name_upload} deleted from cloud storage by user action.")
-        logger.debug(f"[PERF] delete_pdf endpoint time: {time.time() - start_time:.2f}s")
+        logger.info(f"[PERF] delete_pdf endpoint time: {time.time() - start_time:.2f}s")
         return {"status": "deleted"}
     else:
         logger.warning(f"[DELETE] File not found in storage: {blob_name_upload}")
@@ -470,7 +481,7 @@ async def halt_pdf_process(request: Request):
             del running_tasks[uuid]
             processing_status[uuid] = {"status": "cancelled", "result": None, "error": "Processing was cancelled."}
             logger.info(f"[HALT] Process {uuid} halted by user action.")
-            logger.debug(f"[PERF] halt_pdf_process endpoint time: {time.time() - start_time:.2f}s")
+            logger.info(f"[PERF] halt_pdf_process endpoint time: {time.time() - start_time:.2f}s")
             return JSONResponse({"success": True, "message": f"Process {uuid} halted."})
         except Exception as e:
             logger.error(f"[HALT] Failed to halt process {uuid}: {str(e)}\n{traceback.format_exc()}")
@@ -492,7 +503,7 @@ async def log_user_action(request: Request):
     elif level == 'warning':
         logger.warning(msg)
     elif level == 'debug':
-        logger.debug(msg)
+        logger.info(msg)
     else:
         logger.info(msg)
     return {"success": True}
