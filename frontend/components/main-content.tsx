@@ -321,7 +321,13 @@ toast({
 
   // Select all resources button handler
   const handleSelectAllResources = () => {
-    setSelectedResources(extractedResources.map(r => r.id));
+    // setSelectedResources(extractedResources.map(r => r.id));
+    setSelectedResources(
+      extractedResources
+        .filter(resource => selectedType === "__ALL__" || resource.type === selectedType)
+        .filter(resource => resource.title.toLowerCase().includes(filterText.toLowerCase()))
+        .map(r => r.id)
+    );
   };
 
   // Deselect all resources button handler
